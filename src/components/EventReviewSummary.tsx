@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BaseballEvent, Player, Pitch, Team } from '../types';
-import { calculateGamePitchingMetrics } from '../storage';
+import { calculateGamePitchingMetrics, getSessionsForEvent, getAllCoaches, getCurrentCoach } from '../storage';
 import { PitchSmartBadge } from './PitchSmartBadge';
 import { StrikeZoneHeatmap } from './StrikeZoneHeatmap';
 import {
@@ -17,6 +17,8 @@ import {
   Target,
   Flame,
   ShieldCheck,
+  MessageSquare,
+  Lock,
 } from 'lucide-react';
 
 interface EventReviewSummaryProps {
@@ -326,8 +328,8 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
 
                   {/* Expanded Scouting Analysis & Strike Zone Heatmap */}
                   {isExpanded && (
-                    <div className="p-4 sm:p-6 bg-slate-50/50">
-                      <div className="mb-4">
+                    <div className="p-4 sm:p-6 bg-slate-50/50 space-y-5">
+                      <div>
                         <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                           <Target className="w-4 h-4 text-emerald-600" />
                           <span>{pitcher.name}'s Event Strike Zone &amp; Arsenal Heatmap</span>
@@ -341,6 +343,80 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
                         pitches={pitches}
                         title={`${pitcher.name} (#${pitcher.jerseyNumber}) Event Summary`}
                       />
+
+                      {(() => {
+                        const eventSessions = getSessionsForEvent(event.id);
+                        const pitcherSessions = eventSessions.filter((s) => s.pitcherId === pitcher.id);
+                        const allCoaches = getAllCoaches();
+                        const currentCoach = getCurrentCoach();
+
+                        const visibleNotes = pitcherSessions.flatMap((session) => {
+                          return Object.entries(session.coachNotes || {}).map(([coachId, note]) => {
+                            const author = allCoaches.find((c) => c.id === coachId);
+                            const isMyNote = currentCoach && coachId === currentCoach.id;
+                            const isShared = typeof note === 'string' && note.startsWith('[SHARED]');
+                            const cleanText = typeof note === 'string' ? note.replace(/^\[SHARED\]\s*/, '') : '';
+                            
+                            return {
+                              coachId,
+                              authorName: author?.name || 'Coach',
+                              noteText: cleanText,
+                              isMyNote,
+                              isShared,
+                              isValid: cleanText.trim().length > 0,
+                            };
+                          }).filter(n => n.isValid && (n.isShared || n.isMyNote));
+                        });
+
+                        return (
+                          <div className="pt-5 border-t border-slate-200">
+                            <div className="mb-3">
+                              <h5 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                                <MessageSquare className="w-4 h-4 text-emerald-600" />
+                                <span>Coaches' Shared Observations &amp; Session Notes</span>
+                              </h5>
+                              <p className="text-xs text-slate-500">
+                                Scouting comments, delivery feedback, and pitch strategy shared between coaches.
+                              </p>
+                            </div>
+
+                            {visibleNotes.length === 0 ? (
+                              <div className="bg-slate-100/50 rounded-xl p-4 text-center text-xs text-slate-400 italic border border-slate-200">
+                                No shared co-coach observations logged for this pitcher in this event yet. Shared notes are updated instantly and can be toggled to unlocked "Shared" state during live recording.
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {visibleNotes.map((n, index) => (
+                                  <div
+                                    key={`${n.coachId}-${index}`}
+                                    className={`p-3.5 rounded-xl border text-xs shadow-3xs space-y-2 ${
+                                      n.isShared
+                                        ? 'bg-emerald-50/50 border-emerald-250/70 text-emerald-950'
+                                        : 'bg-amber-50/40 border-amber-200 text-amber-950'
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-black text-slate-900">{n.authorName}</span>
+                                      <span
+                                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                          n.isShared
+                                            ? 'bg-emerald-100 text-emerald-800'
+                                            : 'bg-amber-100 text-amber-800'
+                                        }`}
+                                      >
+                                        {n.isShared ? 'Shared Comment' : 'Private to You'}
+                                      </span>
+                                    </div>
+                                    <p className="leading-relaxed font-medium">
+                                      {n.noteText}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>

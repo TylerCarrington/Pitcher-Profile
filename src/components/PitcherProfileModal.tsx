@@ -6,6 +6,7 @@ import {
   getEventsForTeam,
   getAllCoaches,
   savePlayer,
+  getCurrentCoach,
 } from '../storage';
 import { calculatePitchSmartStatus, calculatePlayerRestEligibility, PITCH_TYPES_CONFIG } from '../utils/pitchSmart';
 import { PitchSmartBadge } from './PitchSmartBadge';
@@ -566,9 +567,15 @@ export const PitcherProfileModal: React.FC<PitcherProfileModalProps> = ({
                         })
                       : 'Past Session';
 
+                    const currentCoach = getCurrentCoach();
                     const coachNotesEntries = session.coachNotes
                       ? Object.entries(session.coachNotes).filter(
-                          ([_, note]) => typeof note === 'string' && !!note.trim(),
+                          ([coachId, note]) => {
+                            if (typeof note !== 'string' || !note.trim()) return false;
+                            const isMyNote = currentCoach && coachId === currentCoach.id;
+                            const isShared = note.startsWith('[SHARED]');
+                            return isShared || isMyNote;
+                          }
                         )
                       : [];
 

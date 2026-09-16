@@ -14,15 +14,15 @@ export default defineConfig(() => {
         registerType: 'autoUpdate',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
         manifest: {
-          id: '/',
+          id: './',
           name: 'Pitch Tracker & Coach Scouting',
           short_name: 'PitchTracker',
           description: 'Youth baseball pitch-by-pitch tracking, touch strike-zone plotting with magnified preview, and coaching scouting sessions.',
           theme_color: '#0f172a',
           background_color: '#0f172a',
           display: 'standalone',
-          start_url: '/',
-          scope: '/',
+          start_url: './',
+          scope: './',
           icons: [
             {
               src: 'pwa-192x192.png',

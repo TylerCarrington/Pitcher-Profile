@@ -3,6 +3,7 @@ import { usePWAInstall } from './usePWAInstall';
 import { Download, Smartphone, X } from 'lucide-react';
 
 export const PWAInstallButton: React.FC = () => {
+  return null;
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [showIOSGuide, setShowIOSGuide] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);

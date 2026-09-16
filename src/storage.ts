@@ -235,6 +235,36 @@ export function initCloudSync(coachEmail?: string, coachUid?: string): () => voi
           if (!isPushingToCloud) {
             const localData = loadData();
             const merged = mergeAppData(localData, remoteData);
+
+            // Reconcile current coach and team memberships across devices
+            const current = getCurrentCoach();
+            if (current && current.email) {
+              const cleanEmail = current.email.trim().toLowerCase();
+              const authoritativeCoach = merged.coaches.find(
+                (c) => c.email && c.email.trim().toLowerCase() === cleanEmail,
+              );
+              if (authoritativeCoach && authoritativeCoach.id !== current.id) {
+                localStorage.setItem(CURRENT_COACH_KEY, authoritativeCoach.id);
+              }
+
+              // Ensure all teams created by or belonging to this email include this coach ID
+              merged.teams.forEach((team) => {
+                const creator = merged.coaches.find((c) => c.id === team.createdBy);
+                if (
+                  creator?.email?.toLowerCase() === cleanEmail ||
+                  team.createdBy === current.id ||
+                  (authoritativeCoach && team.createdBy === authoritativeCoach.id)
+                ) {
+                  if (!team.memberCoachIds.includes(current.id)) {
+                    team.memberCoachIds.push(current.id);
+                  }
+                  if (authoritativeCoach && !team.memberCoachIds.includes(authoritativeCoach.id)) {
+                    team.memberCoachIds.push(authoritativeCoach.id);
+                  }
+                }
+              });
+            }
+
             saveData(merged, true); // Save locally without echoing back to cloud
             notifySyncStatus('synced');
           }
@@ -279,11 +309,15 @@ export function signInWithGoogle(profile: {
 }): Coach {
   const data = loadData();
   const cleanEmail = profile.email.trim().toLowerCase();
+  
+  // Deterministic stable ID for email-based coaches
+  const stableId = `coach_email_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+  
   let coach = data.coaches.find((c) => c.email.toLowerCase() === cleanEmail);
 
   if (!coach) {
     coach = {
-      id: `coach_g_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      id: stableId,
       name: profile.name.trim(),
       email: profile.email.trim(),
       avatar: profile.avatar || undefined,
@@ -296,6 +330,16 @@ export function signInWithGoogle(profile: {
     coach.name = profile.name.trim() || coach.name;
     if (profile.avatar) coach.avatar = profile.avatar;
   }
+
+  // Ensure any teams created by or associated with this email include this coach ID
+  data.teams.forEach((team) => {
+    const creator = data.coaches.find((c) => c.id === team.createdBy);
+    if (creator?.email?.toLowerCase() === cleanEmail || team.createdBy === coach.id) {
+      if (!team.memberCoachIds.includes(coach.id)) {
+        team.memberCoachIds.push(coach.id);
+      }
+    }
+  });
 
   localStorage.setItem(CURRENT_COACH_KEY, coach.id);
   localStorage.setItem(AUTH_STATUS_KEY, 'signed_in');
@@ -343,9 +387,28 @@ export function getAllCoaches(): Coach[] {
 export function getTeamsForCoach(coachId: string): Team[] {
   if (!coachId) return [];
   const data = loadData();
-  return data.teams.filter(
-    (t) => t.createdBy === coachId || t.memberCoachIds.includes(coachId),
-  );
+  const currentCoach = data.coaches.find((c) => c.id === coachId);
+  const coachEmail = currentCoach?.email?.trim().toLowerCase();
+
+  // Find all coach IDs matching this coach's email to ensure seamless multi-device & legacy ID matching
+  const matchingCoachIds = new Set<string>([coachId]);
+  if (coachEmail) {
+    data.coaches.forEach((c) => {
+      if (c.email && c.email.trim().toLowerCase() === coachEmail) {
+        matchingCoachIds.add(c.id);
+      }
+    });
+  }
+
+  return data.teams.filter((t) => {
+    if (matchingCoachIds.has(t.createdBy)) return true;
+    if (t.memberCoachIds && t.memberCoachIds.some((id) => matchingCoachIds.has(id))) return true;
+    if (coachEmail) {
+      const creator = data.coaches.find((c) => c.id === t.createdBy);
+      if (creator?.email?.toLowerCase() === coachEmail) return true;
+    }
+    return false;
+  });
 }
 
 export function getTeamById(teamId: string): Team | undefined {

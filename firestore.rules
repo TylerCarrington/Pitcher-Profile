@@ -15,6 +15,20 @@ service cloud.firestore {
       }
     }
 
+    // Shared teams and roster data
+    match /teams/{teamId} {
+      allow read, write: if isAuthenticated();
+
+      match /{subcollection=**} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    // Shared invite codes registry
+    match /invite_codes/{code} {
+      allow read, write: if isAuthenticated();
+    }
+
     // Public / Unauthenticated access is strictly forbidden
     match /{document=**} {
       allow read, write: if false;

@@ -1022,10 +1022,7 @@ export function deleteTeam(teamId: string, coachId: string): { success: boolean;
   const team = data.teams.find((t) => t.id === teamId);
   if (!team) return { success: false, error: 'Team not found' };
 
-  if (team.createdBy !== coachId) {
-    return { success: false, error: 'Only the team creator can delete this team.' };
-  }
-
+  // Allow any staff coach to delete a team for cleanup
   // Extract event IDs before filtering out events
   const teamEvents = data.events.filter((e) => e.teamId === teamId);
   const eventIds = new Set(teamEvents.map((e) => e.id));

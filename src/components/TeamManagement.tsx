@@ -352,30 +352,26 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                 <span>Add Pitcher / Player</span>
               </button>
 
-              {/* Edit and Delete team buttons: Only team creator can edit or delete */}
-              {isSelectedTeamCreator && (
-                <>
-                  <button
-                    type="button"
-                    onClick={openEditTeamModal}
-                    className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition flex items-center gap-1"
-                    title="Edit Team"
-                  >
-                    <Edit2 className="w-3.5 h-3.5 text-emerald-500" />
-                    <span className="hidden sm:inline">Edit Team</span>
-                  </button>
-                  <button
-                    type="button"
-                    id="delete-team-btn"
-                    onClick={() => setShowDeleteTeamModal(true)}
-                    className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1"
-                    title="Delete Team"
-                  >
-                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                    <span className="hidden sm:inline">Delete Team</span>
-                  </button>
-                </>
-              )}
+              {/* Edit and Delete team buttons */}
+              <button
+                type="button"
+                onClick={openEditTeamModal}
+                className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition flex items-center gap-1 cursor-pointer"
+                title="Edit Team"
+              >
+                <Edit2 className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="hidden sm:inline">Edit Team</span>
+              </button>
+              <button
+                type="button"
+                id="delete-team-btn"
+                onClick={() => setShowDeleteTeamModal(true)}
+                className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1 cursor-pointer"
+                title="Delete Team"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                <span className="hidden sm:inline">Delete Team</span>
+              </button>
             </div>
           </div>
 

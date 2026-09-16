@@ -156,25 +156,26 @@ export default function App() {
 
   // Handle URL share links on load (e.g. ?join=CODE)
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const joinCode = params.get('join');
-    if (joinCode) {
-      const coach = getCurrentCoach();
-      if (!coach) {
-        // If not signed in, we can't auto-join here without an auth flow,
-        // but for now, just silently return or we could redirect.
-        return;
+    const handleUrlJoin = async () => {
+      const params = new URLSearchParams(window.location.search);
+      const joinCode = params.get('join');
+      if (joinCode) {
+        const coach = getCurrentCoach();
+        if (!coach) {
+          return;
+        }
+        const res = await joinTeamByCode(joinCode, coach.id);
+        if (res.success && res.team) {
+          setJoinNotification(`You joined ${res.team.name}!`);
+          setSelectedTeamId(res.team.id);
+          // Clear param without reload
+          const newUrl = window.location.pathname;
+          window.history.replaceState({}, '', newUrl);
+          setTimeout(() => setJoinNotification(null), 4000);
+        }
       }
-      const res = joinTeamByCode(joinCode, coach.id);
-      if (res.success && res.team) {
-        setJoinNotification(`You joined ${res.team.name}!`);
-        setSelectedTeamId(res.team.id);
-        // Clear param without reload
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, '', newUrl);
-        setTimeout(() => setJoinNotification(null), 4000);
-      }
-    }
+    };
+    handleUrlJoin();
   }, []);
 
   const selectedTeam = selectedTeamId ? getTeamById(selectedTeamId) || null : null;
@@ -252,9 +253,9 @@ export default function App() {
     syncStore();
   };
 
-  const handleJoinTeam = (codeOrLink: string) => {
+  const handleJoinTeam = async (codeOrLink: string) => {
     if (!currentCoach) return { success: false, message: 'Not signed in' };
-    const res = joinTeamByCode(codeOrLink, currentCoach.id);
+    const res = await joinTeamByCode(codeOrLink, currentCoach.id);
     if (res.success && res.team) {
       setSelectedTeamId(res.team.id);
       localStorage.setItem('pitch_tracker_last_team_id', res.team.id);

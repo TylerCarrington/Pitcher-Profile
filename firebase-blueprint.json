@@ -69,6 +69,14 @@
     "/coaches/{coachId}/state/current": {
       "schema": "CoachState",
       "description": "Synchronized cloud database state for the authenticated coach account across computer and mobile devices"
+    },
+    "/invite_codes/{code}": {
+      "schema": "Team",
+      "description": "Shared invite code registry mapping team codes to team metadata and roster snapshots"
+    },
+    "/teams/{teamId}": {
+      "schema": "Team",
+      "description": "Shared baseball team profile and coach membership mapping"
     }
   }
 }

@@ -8,6 +8,7 @@ import {
   Shield,
   X,
   Users,
+  Loader2,
 } from 'lucide-react';
 import { PITCH_RULE_PRESETS } from '../utils/pitchSmart';
 import { ImageUploadInput } from './ImageUploadInput';
@@ -18,7 +19,7 @@ interface TeamSwitcherProps {
   currentCoach: Coach;
   onSelectTeam: (team: Team) => void;
   onCreateTeam: (name: string, imageUrl?: string, pitchRulePresetId?: PitchRulePresetId) => void;
-  onJoinTeam: (codeOrLink: string) => { success: boolean; message?: string };
+  onJoinTeam: (codeOrLink: string) => Promise<{ success: boolean; message?: string }> | { success: boolean; message?: string };
 }
 
 export const TeamSwitcher: React.FC<TeamSwitcherProps> = ({
@@ -42,6 +43,7 @@ export const TeamSwitcher: React.FC<TeamSwitcherProps> = ({
   const [joinCode, setJoinCode] = useState('');
   const [joinError, setJoinError] = useState<string | null>(null);
   const [joinSuccess, setJoinSuccess] = useState<string | null>(null);
+  const [isJoining, setIsJoining] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -71,23 +73,30 @@ export const TeamSwitcher: React.FC<TeamSwitcherProps> = ({
     setIsOpen(false);
   };
 
-  const handleJoinSubmit = (e: React.FormEvent) => {
+  const handleJoinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setJoinError(null);
     setJoinSuccess(null);
-    if (!joinCode.trim()) return;
+    if (!joinCode.trim() || isJoining) return;
+    setIsJoining(true);
 
-    const res = onJoinTeam(joinCode.trim());
-    if (res.success) {
-      setJoinSuccess('Joined team successfully!');
-      setTimeout(() => {
-        setShowJoinModal(false);
-        setJoinCode('');
-        setJoinSuccess(null);
-        setIsOpen(false);
-      }, 700);
-    } else {
-      setJoinError(res.message || 'Invalid or expired invite code.');
+    try {
+      const res = await onJoinTeam(joinCode.trim());
+      if (res.success) {
+        setJoinSuccess('Joined team successfully!');
+        setTimeout(() => {
+          setShowJoinModal(false);
+          setJoinCode('');
+          setJoinSuccess(null);
+          setIsOpen(false);
+        }, 700);
+      } else {
+        setJoinError(res.message || 'Invalid or expired invite code.');
+      }
+    } catch (err) {
+      setJoinError('Failed to verify invite code. Please try again.');
+    } finally {
+      setIsJoining(false);
     }
   };
 
@@ -384,10 +393,17 @@ export const TeamSwitcher: React.FC<TeamSwitcherProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={!joinCode.trim()}
-                  className="px-4 py-1.5 text-xs font-bold rounded-lg bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white shadow-xs transition"
+                  disabled={!joinCode.trim() || isJoining}
+                  className="px-4 py-1.5 text-xs font-bold rounded-lg bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white shadow-xs transition flex items-center gap-1.5"
                 >
-                  Join Team
+                  {isJoining ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Joining...
+                    </>
+                  ) : (
+                    'Join Team'
+                  )}
                 </button>
               </div>
             </form>

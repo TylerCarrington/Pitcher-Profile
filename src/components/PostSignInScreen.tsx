@@ -11,6 +11,7 @@ import {
   LogOut,
   X,
   Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { PITCH_RULE_PRESETS } from '../utils/pitchSmart';
 import { ImageUploadInput } from './ImageUploadInput';
@@ -18,7 +19,7 @@ import { ImageUploadInput } from './ImageUploadInput';
 interface PostSignInScreenProps {
   currentCoach: Coach;
   onCreateTeam: (name: string, imageUrl?: string, pitchRulePresetId?: PitchRulePresetId) => void;
-  onJoinTeam: (codeOrLink: string) => { success: boolean; message?: string };
+  onJoinTeam: (codeOrLink: string) => Promise<{ success: boolean; message?: string }> | { success: boolean; message?: string };
   onSignOut: () => void;
 }
 
@@ -40,6 +41,7 @@ export const PostSignInScreen: React.FC<PostSignInScreenProps> = ({
   const [joinCode, setJoinCode] = useState('');
   const [joinError, setJoinError] = useState<string | null>(null);
   const [joinSuccess, setJoinSuccess] = useState<string | null>(null);
+  const [isJoining, setIsJoining] = useState(false);
 
   const firstName = currentCoach.name ? currentCoach.name.split(' ')[0] : 'Coach';
 
@@ -50,17 +52,24 @@ export const PostSignInScreen: React.FC<PostSignInScreenProps> = ({
     onCreateTeam(teamName.trim(), teamImage.trim() || undefined, pitchPreset);
   };
 
-  const handleJoinSubmit = (e: React.FormEvent) => {
+  const handleJoinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setJoinError(null);
     setJoinSuccess(null);
-    if (!joinCode.trim()) return;
+    if (!joinCode.trim() || isJoining) return;
+    setIsJoining(true);
 
-    const res = onJoinTeam(joinCode.trim());
-    if (res.success) {
-      setJoinSuccess('Successfully joined team! Loading dugout...');
-    } else {
-      setJoinError(res.message || 'Invalid or expired invite code. Please check with your head coach.');
+    try {
+      const res = await onJoinTeam(joinCode.trim());
+      if (res.success) {
+        setJoinSuccess('Successfully joined team! Loading dugout...');
+      } else {
+        setJoinError(res.message || 'Invalid or expired invite code. Please check with your head coach.');
+      }
+    } catch (err) {
+      setJoinError('Failed to lookup invite code. Please check your internet connection.');
+    } finally {
+      setIsJoining(false);
     }
   };
 
@@ -366,10 +375,17 @@ export const PostSignInScreen: React.FC<PostSignInScreenProps> = ({
                 </button>
                 <button
                   type="submit"
-                  disabled={!joinCode.trim()}
-                  className="px-5 py-2 text-xs font-bold rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 shadow-md transition"
+                  disabled={!joinCode.trim() || isJoining}
+                  className="px-5 py-2 text-xs font-bold rounded-xl bg-sky-500 hover:bg-sky-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 shadow-md transition flex items-center gap-1.5"
                 >
-                  Join Team
+                  {isJoining ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Joining Team...
+                    </>
+                  ) : (
+                    'Join Team'
+                  )}
                 </button>
               </div>
             </form>

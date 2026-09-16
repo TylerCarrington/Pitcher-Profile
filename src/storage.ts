@@ -129,6 +129,45 @@ function saveData(data: AppData, skipCloud = false) {
   }
 }
 
+async function syncTeamAndInvitesToFirestore(teams: Team[], players: Player[], coaches: Coach[]) {
+  if (!auth.currentUser && !getCurrentCoach()) return;
+  for (const team of teams) {
+    if (!team || !team.id) continue;
+    const teamPlayers = players.filter((p) => p.teamId === team.id);
+    const creator = coaches.find((c) => c.id === team.createdBy);
+    const cleanCode = team.inviteCode ? team.inviteCode.trim().toUpperCase() : null;
+    const cleanCodeWithoutDash = cleanCode ? cleanCode.replace(/-/g, '') : null;
+
+    const payload = {
+      id: team.id,
+      name: team.name,
+      imageUrl: team.imageUrl || null,
+      createdBy: team.createdBy,
+      creatorEmail: creator?.email || null,
+      creatorName: creator?.name || null,
+      createdAt: team.createdAt,
+      memberCoachIds: team.memberCoachIds || [],
+      inviteCode: team.inviteCode,
+      inviteCodeCreatedAt: team.inviteCodeCreatedAt,
+      pitchRulePresetId: team.pitchRulePresetId || 'usa_pitch_smart',
+      players: teamPlayers,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    try {
+      await setDoc(doc(db, 'teams', team.id), payload, { merge: true });
+      if (cleanCode) {
+        await setDoc(doc(db, 'invite_codes', cleanCode), payload, { merge: true });
+        if (cleanCodeWithoutDash && cleanCodeWithoutDash !== cleanCode) {
+          await setDoc(doc(db, 'invite_codes', cleanCodeWithoutDash), payload, { merge: true });
+        }
+      }
+    } catch (err) {
+      console.warn('Notice syncing team invite record to Firestore:', err);
+    }
+  }
+}
+
 async function pushToFirestoreDebounced(data: AppData) {
   if (cloudSaveTimer) {
     clearTimeout(cloudSaveTimer);
@@ -151,6 +190,10 @@ async function pushToFirestoreDebounced(data: AppData) {
         },
         { merge: true },
       );
+
+      // Also publish teams and active invite codes to the shared directory
+      await syncTeamAndInvitesToFirestore(data.teams, data.players, data.coaches);
+
       notifySyncStatus('synced');
     } catch (err) {
       console.warn('Firestore cloud sync notice (will retry or operate offline):', err);
@@ -520,32 +563,124 @@ export function regenerateTeamInviteCode(
   return { ...res, team };
 }
 
-export function joinTeamByCode(
+export async function joinTeamByCode(
   codeOrId: string,
   coachId: string,
-): { success: boolean; team?: Team; message?: string } {
+): Promise<{ success: boolean; team?: Team; message?: string }> {
   const data = loadData();
   const cleanCode = codeOrId.trim().toUpperCase();
-  const team = data.teams.find(
+  const cleanCodeWithoutDash = cleanCode.replace(/-/g, '');
+
+  let team = data.teams.find(
     (t) =>
       t.inviteCode.toUpperCase() === cleanCode ||
       t.id === codeOrId.trim() ||
-      t.inviteCode.replace('-', '').toUpperCase() === cleanCode.replace('-', ''),
+      t.inviteCode.replace(/-/g, '').toUpperCase() === cleanCodeWithoutDash,
   );
 
-  if (!team) {
-    return {
-      success: false,
-      message: 'Invalid or revoked invite code. Please request an active invite code from a team coach.',
-    };
+  // If found in local store, ensure coach membership is registered
+  if (team) {
+    if (!team.memberCoachIds.includes(coachId)) {
+      team.memberCoachIds.push(coachId);
+      saveData(data);
+    }
+    return { success: true, team };
   }
 
-  if (!team.memberCoachIds.includes(coachId)) {
-    team.memberCoachIds.push(coachId);
-    saveData(data);
+  // If not in local store, query cloud Firestore invite registry
+  try {
+    let inviteSnap = await getDoc(doc(db, 'invite_codes', cleanCode));
+    if (!inviteSnap.exists() && cleanCode !== cleanCodeWithoutDash) {
+      inviteSnap = await getDoc(doc(db, 'invite_codes', cleanCodeWithoutDash));
+    }
+    if (!inviteSnap.exists()) {
+      inviteSnap = await getDoc(doc(db, 'teams', codeOrId.trim()));
+    }
+
+    if (inviteSnap.exists()) {
+      const remote = inviteSnap.data() as any;
+      if (remote && remote.id && remote.name) {
+        const teamRecord: Team = {
+          id: remote.id,
+          name: remote.name,
+          imageUrl: remote.imageUrl || undefined,
+          createdBy: remote.createdBy || 'coach_creator',
+          createdAt: remote.createdAt || new Date().toISOString(),
+          memberCoachIds: Array.isArray(remote.memberCoachIds) ? remote.memberCoachIds : [],
+          inviteCode: remote.inviteCode || cleanCode,
+          inviteCodeCreatedAt: remote.inviteCodeCreatedAt || new Date().toISOString(),
+          pitchRulePresetId: remote.pitchRulePresetId || 'usa_pitch_smart',
+        };
+
+        if (!teamRecord.memberCoachIds.includes(coachId)) {
+          teamRecord.memberCoachIds.push(coachId);
+        }
+
+        // Add creator coach profile if available
+        if (remote.creatorEmail && remote.createdBy) {
+          const creatorCoach: Coach = {
+            id: remote.createdBy,
+            name: remote.creatorName || 'Head Coach',
+            email: remote.creatorEmail,
+            role: 'head_coach',
+          };
+          if (!data.coaches.some((c) => c.id === creatorCoach.id || (c.email && c.email.toLowerCase() === creatorCoach.email.toLowerCase()))) {
+            data.coaches.push(creatorCoach);
+          }
+        }
+
+        // Merge team into local storage
+        const existingIdx = data.teams.findIndex((t) => t.id === teamRecord.id);
+        if (existingIdx >= 0) {
+          data.teams[existingIdx] = teamRecord;
+        } else {
+          data.teams.push(teamRecord);
+        }
+
+        // Merge team players
+        if (Array.isArray(remote.players)) {
+          remote.players.forEach((p: any) => {
+            if (p && p.id && !data.players.some((lp) => lp.id === p.id)) {
+              data.players.push(p);
+            }
+          });
+        }
+
+        saveData(data);
+
+        // Update Firestore invite & team doc with joined member coach list
+        try {
+          await setDoc(
+            doc(db, 'invite_codes', cleanCode),
+            {
+              memberCoachIds: teamRecord.memberCoachIds,
+              lastUpdated: new Date().toISOString(),
+            },
+            { merge: true },
+          );
+          await setDoc(
+            doc(db, 'teams', teamRecord.id),
+            {
+              memberCoachIds: teamRecord.memberCoachIds,
+              lastUpdated: new Date().toISOString(),
+            },
+            { merge: true },
+          );
+        } catch (syncErr) {
+          console.warn('Notice updating remote member list:', syncErr);
+        }
+
+        return { success: true, team: teamRecord };
+      }
+    }
+  } catch (cloudErr) {
+    console.warn('Firestore cloud invite code query error:', cloudErr);
   }
 
-  return { success: true, team };
+  return {
+    success: false,
+    message: 'Invalid or revoked invite code. Please request an active invite code from a team coach.',
+  };
 }
 
 export function removeCoachFromTeam(

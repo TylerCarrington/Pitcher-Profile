@@ -20,6 +20,7 @@ import {
   Clock,
   Sparkles,
   Camera,
+  Loader2,
 } from 'lucide-react';
 import { PitcherProfileModal } from './PitcherProfileModal';
 import { ImageUploadInput } from './ImageUploadInput';
@@ -37,7 +38,7 @@ interface TeamManagementProps {
   onSelectTeam: (team: Team) => void;
   onCreateTeam: (name: string, imageUrl?: string, pitchRulePresetId?: PitchRulePresetId) => void;
   onUpdateTeam: (teamId: string, name: string, imageUrl?: string, pitchRulePresetId?: PitchRulePresetId) => void;
-  onJoinTeam: (codeOrLink: string) => { success: boolean; message?: string };
+  onJoinTeam: (codeOrLink: string) => Promise<{ success: boolean; message?: string }> | { success: boolean; message?: string };
   onDeleteTeam: (teamId: string) => void;
   onRegenerateInviteLink?: (teamId: string) => void;
   onRemoveCoach?: (teamId: string, coachId: string) => void;
@@ -165,19 +166,29 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     setShowEditTeamModal(false);
   };
 
-  const handleJoinTeamSubmit = (e: React.FormEvent) => {
+  const [isJoiningTeam, setIsJoiningTeam] = useState(false);
+
+  const handleJoinTeamSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!joinCodeInput.trim()) return;
-    const res = onJoinTeam(joinCodeInput.trim());
-    if (res.success) {
-      setJoinFeedback({ success: 'Successfully joined team!' });
-      setTimeout(() => {
-        setShowJoinTeamModal(false);
-        setJoinFeedback(null);
-        setJoinCodeInput('');
-      }, 1000);
-    } else {
-      setJoinFeedback({ error: res.message || 'Invalid invite code or link.' });
+    if (!joinCodeInput.trim() || isJoiningTeam) return;
+    setIsJoiningTeam(true);
+    setJoinFeedback(null);
+    try {
+      const res = await onJoinTeam(joinCodeInput.trim());
+      if (res.success) {
+        setJoinFeedback({ success: 'Successfully joined team!' });
+        setTimeout(() => {
+          setShowJoinTeamModal(false);
+          setJoinFeedback(null);
+          setJoinCodeInput('');
+        }, 1000);
+      } else {
+        setJoinFeedback({ error: res.message || 'Invalid invite code or link.' });
+      }
+    } catch (err) {
+      setJoinFeedback({ error: 'Failed to look up invite code. Please try again.' });
+    } finally {
+      setIsJoiningTeam(false);
     }
   };
 
@@ -688,9 +699,17 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                  disabled={isJoiningTeam}
+                  className="px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white shadow-xs flex items-center gap-1.5"
                 >
-                  Join Team
+                  {isJoiningTeam ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Checking code...
+                    </>
+                  ) : (
+                    'Join Team'
+                  )}
                 </button>
               </div>
             </form>

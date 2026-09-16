@@ -17,10 +17,8 @@ export const GoogleSignInScreen: React.FC<GoogleSignInScreenProps> = ({
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState(false);
 
-  // App support email derived from the Firebase project identity or custom env
-  const appSupportEmail =
-    (import.meta as any).env?.VITE_APP_SUPPORT_EMAIL ||
-    `support@${firebaseConfig.projectId || 'pitcher-profile'}.firebaseapp.com`;
+  // App support email for user assistance
+  const appSupportEmail = 'pitcher-profile@googlegroups.com';
 
   const handleGoogleLogin = async () => {
     try {

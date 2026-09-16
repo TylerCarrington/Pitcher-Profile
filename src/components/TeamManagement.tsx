@@ -312,35 +312,6 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
             </div>
           </div>
 
-          {/* Preset Info Banner */}
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
-                <Shield className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                  <span>{currentPreset.name}</span>
-                  <span className="px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 text-[10px] font-bold">
-                    {currentPreset.badge}
-                  </span>
-                </div>
-                <p className="text-slate-500 text-[11px] mt-0.5">
-                  {currentPreset.description} Rest tracking is calculated exclusively for {selectedTeam.name}.
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowPresetModal(true)}
-              className="text-xs font-bold text-blue-700 hover:text-blue-900 bg-white hover:bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200 transition shrink-0 flex items-center gap-1 self-start sm:self-auto"
-            >
-              <Settings className="w-3 h-3" />
-              <span>Configure Preset</span>
-            </button>
-          </div>
-
           {/* Player Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {players.length === 0 ? (

@@ -13,6 +13,8 @@ import {
   PitchRulePresetId,
   SafetyWarningFlag,
 } from './types';
+import { db, auth } from './firebase';
+import { doc, getDoc, setDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 
 const STORAGE_KEY = 'pitch_tracker_data_v2';
 const CURRENT_COACH_KEY = 'pitch_tracker_current_coach_v2';
@@ -28,22 +30,30 @@ interface AppData {
 }
 
 const DEFAULT_COACHES: Coach[] = [];
-
 const DEFAULT_TEAMS: Team[] = [];
-
 const DEFAULT_PLAYERS: Player[] = [];
-
 const DEFAULT_EVENTS: BaseballEvent[] = [];
-
 const DEFAULT_SESSIONS: PitcherSession[] = [];
-
 const DEFAULT_PITCHES: Pitch[] = [];
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
 
+export type SyncStatus = 'synced' | 'syncing' | 'offline' | 'error';
+let currentSyncStatus: SyncStatus = 'synced';
+let lastSyncTimestamp: string | null = null;
+const syncStatusListeners = new Set<(status: SyncStatus, lastSync: string | null) => void>();
+
 function notify() {
   listeners.forEach((fn) => fn());
+}
+
+function notifySyncStatus(status: SyncStatus) {
+  currentSyncStatus = status;
+  if (status === 'synced') {
+    lastSyncTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+  syncStatusListeners.forEach((fn) => fn(currentSyncStatus, lastSyncTimestamp));
 }
 
 export function subscribeToStore(listener: Listener): () => void {
@@ -51,6 +61,34 @@ export function subscribeToStore(listener: Listener): () => void {
   return () => {
     listeners.delete(listener);
   };
+}
+
+export function subscribeToSyncStatus(
+  listener: (status: SyncStatus, lastSync: string | null) => void,
+): () => void {
+  syncStatusListeners.add(listener);
+  listener(currentSyncStatus, lastSyncTimestamp);
+  return () => {
+    syncStatusListeners.delete(listener);
+  };
+}
+
+export function getSyncStatus(): { status: SyncStatus; lastSync: string | null } {
+  return { status: currentSyncStatus, lastSync: lastSyncTimestamp };
+}
+
+let activeCloudUnsubscribe: Unsubscribe | null = null;
+let currentCloudDocId: string | null = null;
+let isPushingToCloud = false;
+let cloudSaveTimer: any = null;
+
+function getCoachDocId(coach?: Coach | null): string | null {
+  const current = coach || getCurrentCoach();
+  if (!current) return null;
+  if (current.email) {
+    return current.email.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+  }
+  return current.googleId || current.id;
 }
 
 function loadData(): AppData {
@@ -78,19 +116,159 @@ function loadData(): AppData {
   return initial;
 }
 
-function saveData(data: AppData) {
+function saveData(data: AppData, skipCloud = false) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch (err) {
-    console.error('Failed to persist pitch tracker data:', err);
+    console.error('Failed to persist pitch tracker data locally:', err);
   }
   notify();
+
+  if (!skipCloud) {
+    pushToFirestoreDebounced(data);
+  }
+}
+
+async function pushToFirestoreDebounced(data: AppData) {
+  if (cloudSaveTimer) {
+    clearTimeout(cloudSaveTimer);
+  }
+
+  cloudSaveTimer = setTimeout(async () => {
+    const docId = currentCloudDocId || getCoachDocId();
+    if (!docId) return;
+
+    try {
+      notifySyncStatus('syncing');
+      isPushingToCloud = true;
+      const coachDocRef = doc(db, 'coaches', docId, 'state', 'current');
+      await setDoc(
+        coachDocRef,
+        {
+          ...data,
+          lastUpdated: new Date().toISOString(),
+          updatedBy: docId,
+        },
+        { merge: true },
+      );
+      notifySyncStatus('synced');
+    } catch (err) {
+      console.warn('Firestore cloud sync notice (will retry or operate offline):', err);
+      notifySyncStatus('offline');
+    } finally {
+      isPushingToCloud = false;
+    }
+  }, 400);
+}
+
+// Merge remote cloud state with local state
+function mergeAppData(local: AppData, remote: any): AppData {
+  if (!remote || typeof remote !== 'object') return local;
+
+  const mergeById = <T extends { id: string }>(localArr: T[] = [], remoteArr: any[] = []): T[] => {
+    if (!Array.isArray(remoteArr)) return localArr;
+    const map = new Map<string, T>();
+    localArr.forEach((item) => {
+      if (item && item.id) map.set(item.id, item);
+    });
+    remoteArr.forEach((item) => {
+      if (item && item.id) {
+        // remote replaces or creates
+        map.set(item.id, { ...(map.get(item.id) || {}), ...item });
+      }
+    });
+    return Array.from(map.values());
+  };
+
+  const mergeCoaches = (localCoaches: Coach[] = [], remoteCoaches: any[] = []): Coach[] => {
+    if (!Array.isArray(remoteCoaches)) return localCoaches;
+    const map = new Map<string, Coach>();
+    localCoaches.forEach((c) => {
+      if (c && (c.id || c.email)) map.set((c.email || c.id).toLowerCase(), c);
+    });
+    remoteCoaches.forEach((c) => {
+      if (c && (c.id || c.email)) {
+        const key = (c.email || c.id).toLowerCase();
+        map.set(key, { ...(map.get(key) || {}), ...c });
+      }
+    });
+    return Array.from(map.values());
+  };
+
+  return {
+    coaches: mergeCoaches(local.coaches, remote.coaches),
+    teams: mergeById<Team>(local.teams, remote.teams),
+    players: mergeById<Player>(local.players, remote.players),
+    events: mergeById<BaseballEvent>(local.events, remote.events),
+    sessions: mergeById<PitcherSession>(local.sessions, remote.sessions),
+    pitches: mergeById<Pitch>(local.pitches, remote.pitches),
+  };
+}
+
+export function initCloudSync(coachEmail?: string, coachUid?: string): () => void {
+  const docId = coachEmail
+    ? coachEmail.trim().toLowerCase().replace(/[^a-z0-9]/g, '_')
+    : coachUid || getCoachDocId();
+
+  if (!docId) return () => {};
+
+  if (activeCloudUnsubscribe && currentCloudDocId === docId) {
+    return activeCloudUnsubscribe;
+  }
+
+  if (activeCloudUnsubscribe) {
+    activeCloudUnsubscribe();
+    activeCloudUnsubscribe = null;
+  }
+
+  currentCloudDocId = docId;
+  notifySyncStatus('syncing');
+
+  const coachDocRef = doc(db, 'coaches', docId, 'state', 'current');
+
+  try {
+    activeCloudUnsubscribe = onSnapshot(
+      coachDocRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const remoteData = snapshot.data();
+          if (!isPushingToCloud) {
+            const localData = loadData();
+            const merged = mergeAppData(localData, remoteData);
+            saveData(merged, true); // Save locally without echoing back to cloud
+            notifySyncStatus('synced');
+          }
+        } else {
+          // If no cloud doc exists yet, upload current local state to start
+          const localData = loadData();
+          if (localData.teams.length > 0 || localData.players.length > 0) {
+            pushToFirestoreDebounced(localData);
+          } else {
+            notifySyncStatus('synced');
+          }
+        }
+      },
+      (error) => {
+        console.warn('Firestore snapshot listener offline or permissions pending:', error);
+        notifySyncStatus('offline');
+      },
+    );
+  } catch (e) {
+    console.warn('Failed to attach Firestore sync listener:', e);
+    notifySyncStatus('offline');
+  }
+
+  return () => {
+    if (activeCloudUnsubscribe) {
+      activeCloudUnsubscribe();
+      activeCloudUnsubscribe = null;
+    }
+  };
 }
 
 // Google Authentication & Coach State
 export function getIsSignedIn(): boolean {
   const status = localStorage.getItem(AUTH_STATUS_KEY);
-  // Default to true for seamless first-load, but allow signing out and in
   return status !== 'signed_out';
 }
 
@@ -113,16 +291,16 @@ export function signInWithGoogle(profile: {
       googleId: `google_${Date.now()}`,
     };
     data.coaches.push(coach);
-    saveData(data);
   } else {
     // Update profile details if provided
     coach.name = profile.name.trim() || coach.name;
     if (profile.avatar) coach.avatar = profile.avatar;
-    saveData(data);
   }
 
   localStorage.setItem(CURRENT_COACH_KEY, coach.id);
   localStorage.setItem(AUTH_STATUS_KEY, 'signed_in');
+  saveData(data);
+  initCloudSync(coach.email, coach.id);
   notify();
   return coach;
 }
@@ -130,6 +308,11 @@ export function signInWithGoogle(profile: {
 export const createCoachAccount = signInWithGoogle;
 
 export function signOutCoach(): void {
+  if (activeCloudUnsubscribe) {
+    activeCloudUnsubscribe();
+    activeCloudUnsubscribe = null;
+  }
+  currentCloudDocId = null;
   localStorage.setItem(AUTH_STATUS_KEY, 'signed_out');
   notify();
 }
@@ -145,6 +328,10 @@ export function getCurrentCoach(): Coach | null {
 export function setCurrentCoachId(coachId: string): void {
   localStorage.setItem(CURRENT_COACH_KEY, coachId);
   localStorage.setItem(AUTH_STATUS_KEY, 'signed_in');
+  const coach = getCurrentCoach();
+  if (coach) {
+    initCloudSync(coach.email, coach.id);
+  }
   notify();
 }
 

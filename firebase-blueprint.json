@@ -1,0 +1,74 @@
+{
+  "entities": {
+    "Coach": {
+      "title": "Coach",
+      "description": "Coach profile and account information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["head_coach", "assistant_coach", "pitching_coach", "scorekeeper"] },
+        "avatar": { "type": "string" },
+        "googleId": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "role"]
+    },
+    "Team": {
+      "title": "Team",
+      "description": "Baseball team record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "memberCoachIds": { "type": "array" },
+        "inviteCode": { "type": "string" },
+        "inviteCodeCreatedAt": { "type": "string" },
+        "pitchRulePresetId": { "type": "string" }
+      },
+      "required": ["id", "name", "createdBy", "createdAt", "memberCoachIds", "pitchRulePresetId"]
+    },
+    "Player": {
+      "title": "Player",
+      "description": "Pitcher or team player",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "teamId": { "type": "string" },
+        "name": { "type": "string" },
+        "number": { "type": "string" },
+        "throws": { "type": "string", "enum": ["R", "L"] },
+        "age": { "type": "number" },
+        "avatarUrl": { "type": "string" },
+        "pitchArsenal": { "type": "array" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "teamId", "name", "number", "throws", "age"]
+    },
+    "CoachState": {
+      "title": "CoachState",
+      "description": "Comprehensive synchronized cloud state for the coach including teams, players, events, sessions, and pitches",
+      "type": "object",
+      "properties": {
+        "coaches": { "type": "array" },
+        "teams": { "type": "array" },
+        "players": { "type": "array" },
+        "events": { "type": "array" },
+        "sessions": { "type": "array" },
+        "pitches": { "type": "array" },
+        "lastUpdated": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["teams", "players", "events", "sessions", "pitches", "lastUpdated"]
+    }
+  },
+  "firestore": {
+    "/coaches/{coachId}/state/current": {
+      "schema": "CoachState",
+      "description": "Synchronized cloud database state for the authenticated coach account across computer and mobile devices"
+    }
+  }
+}

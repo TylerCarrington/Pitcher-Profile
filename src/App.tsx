@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { auth } from './firebase';
-import { signOut } from 'firebase/auth';
+import { signOut, onAuthStateChanged } from 'firebase/auth';
 import {
   Coach,
   Team,
@@ -55,6 +55,9 @@ import {
   updatePitch,
   deletePitch,
   subscribeToStore,
+  initCloudSync,
+  subscribeToSyncStatus,
+  SyncStatus,
 } from './storage';
 import { TeamManagement } from './components/TeamManagement';
 import { EventManagement } from './components/EventManagement';
@@ -65,7 +68,7 @@ import { TeamSwitcher } from './components/TeamSwitcher';
 import { GoogleSignInScreen } from './components/GoogleSignInScreen';
 import { PostSignInScreen } from './components/PostSignInScreen';
 import pitchLogo from './assets/pitch.png';
-import { Activity, Users, Calendar, ArrowLeft, Plus, Link } from 'lucide-react';
+import { Activity, Users, Calendar, ArrowLeft, Plus, Link, Cloud, RefreshCw, CloudOff, CheckCircle2 } from 'lucide-react';
 
 export default function App() {
   const [isSignedIn, setIsSignedIn] = useState<boolean>(() => {
@@ -78,6 +81,8 @@ export default function App() {
     return localStorage.getItem('pitch_tracker_last_team_id') || null;
   });
   const [activeTab, setActiveTab] = useState<'events' | 'roster'>('roster');
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('synced');
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
 
   // Event & Session active states
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -85,6 +90,34 @@ export default function App() {
 
   // Join feedback message
   const [joinNotification, setJoinNotification] = useState<string | null>(null);
+
+  // Listen to Firebase Auth state across reloads / devices
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const coach = createCoachAccount({
+          name: user.displayName || user.email?.split('@')[0] || 'Coach',
+          email: user.email || '',
+          avatar: user.photoURL || undefined,
+        });
+        setCurrentCoachId(coach.id);
+        setCurrentCoach(coach);
+        setIsSignedIn(true);
+        localStorage.setItem('pitch_tracker_signed_in', 'true');
+        initCloudSync(user.email || '', user.uid);
+      }
+    });
+
+    const unsubscribeSync = subscribeToSyncStatus((status, time) => {
+      setSyncStatus(status);
+      if (time) setLastSyncTime(time);
+    });
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribeSync();
+    };
+  }, []);
 
   // Sync state from storage
   const syncStore = useCallback(() => {
@@ -484,8 +517,43 @@ export default function App() {
             </div>
           </div>
 
-          {/* Right Header Controls: Team Switcher + Coach Switcher */}
+          {/* Right Header Controls: Cloud Status + Team Switcher + Coach Switcher */}
           <div className="flex items-center gap-2">
+            {/* Real-time Cloud Sync Indicator */}
+            <div
+              className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition ${
+                syncStatus === 'synced'
+                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/30'
+                  : syncStatus === 'syncing'
+                  ? 'bg-amber-950/60 text-amber-300 border-amber-500/30 animate-pulse'
+                  : 'bg-slate-800/80 text-slate-400 border-slate-700'
+              }`}
+              title={
+                syncStatus === 'synced'
+                  ? `Real-time Cloud Sync Active (Last synced: ${lastSyncTime || 'Just now'})`
+                  : syncStatus === 'syncing'
+                  ? 'Syncing changes to Firestore...'
+                  : 'Operating locally (changes will sync when online)'
+              }
+            >
+              {syncStatus === 'synced' ? (
+                <>
+                  <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Cloud Synced</span>
+                </>
+              ) : syncStatus === 'syncing' ? (
+                <>
+                  <RefreshCw className="w-3 h-3 text-amber-400 animate-spin" />
+                  <span>Syncing...</span>
+                </>
+              ) : (
+                <>
+                  <CloudOff className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Cached</span>
+                </>
+              )}
+            </div>
+
             {currentCoach && (
               <TeamSwitcher
                 teams={teams}

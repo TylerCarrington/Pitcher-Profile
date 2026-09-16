@@ -98,6 +98,7 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
   const [showEndEventConfirm, setShowEndEventConfirm] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<PitcherSession | null>(null);
   const [showFastEntryModal, setShowFastEntryModal] = useState(false);
+  const [pendingSwitchPitcher, setPendingSwitchPitcher] = useState<Player | null>(null);
 
   // Responsive strike zone grid sizing for mobile single-screen fit
   const [isMobile, setIsMobile] = useState(() =>
@@ -274,8 +275,16 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
                   id={`select-pitcher-${player.id}`}
                   type="button"
                   onClick={() => {
-                    onStartSession(player.id);
-                    setShowPitcherPicker(false);
+                    if (activeSession && activePitcher && activePitcher.id !== player.id) {
+                      setPendingSwitchPitcher(player);
+                    } else {
+                      if (activePitcher && activePitcher.id === player.id) {
+                        setShowPitcherPicker(false);
+                      } else {
+                        onStartSession(player.id);
+                        setShowPitcherPicker(false);
+                      }
+                    }
                   }}
                   className="p-4 rounded-xl border-2 border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40 text-left transition flex items-center justify-between gap-3 group"
                 >
@@ -524,6 +533,55 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
             </div>
           </div>
         )}
+
+        {/* Switch Pitcher Warning Modal (Picker Screen) */}
+        {pendingSwitchPitcher && activePitcher && activeSession && (
+          <div
+            id="confirm-switch-pitcher-picker-modal"
+            className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+          >
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold text-white">End Current Session?</h3>
+                  <p className="text-xs text-slate-400">Active: {activePitcher.name}</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Selecting <strong className="text-white">{pendingSwitchPitcher.name}</strong> will automatically end the current active session with <strong className="text-white">{activePitcher.name}</strong>. This will finalize {activePitcher.name}'s statistics and start a brand-new session for {pendingSwitchPitcher.name}.
+              </p>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  id="cancel-switch-pitcher-btn"
+                  onClick={() => setPendingSwitchPitcher(null)}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  id="confirm-switch-pitcher-btn"
+                  onClick={() => {
+                    const targetPitcherId = pendingSwitchPitcher.id;
+                    setPendingSwitchPitcher(null);
+                    onEndSession(activeSession.id);
+                    onStartSession(targetPitcherId);
+                    setShowPitcherPicker(false);
+                  }}
+                  className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-white shadow-xs transition"
+                >
+                  End &amp; Switch
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -551,6 +609,7 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
         onEndInning={onEndInning}
         onEndSession={() => setShowEndSessionConfirm(true)}
         onEndEvent={() => setShowEndEventConfirm(true)}
+        onBackToTeam={() => setShowPitcherPicker(true)}
       />
 
       {/* Main Recording Workspace */}
@@ -884,6 +943,55 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
                 className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white font-semibold text-xs shadow transition active:scale-[0.99]"
               >
                 Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Switch Pitcher Warning Modal */}
+      {pendingSwitchPitcher && activePitcher && activeSession && (
+        <div
+          id="confirm-switch-pitcher-modal"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-white">End Current Session?</h3>
+                <p className="text-xs text-slate-400">Active: {activePitcher.name}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Selecting <strong className="text-white">{pendingSwitchPitcher.name}</strong> will automatically end the current active session with <strong className="text-white">{activePitcher.name}</strong>. This will finalize {activePitcher.name}'s statistics and start a brand-new session for {pendingSwitchPitcher.name}.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                id="cancel-switch-pitcher-btn"
+                onClick={() => setPendingSwitchPitcher(null)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="confirm-switch-pitcher-btn"
+                onClick={() => {
+                  const targetPitcherId = pendingSwitchPitcher.id;
+                  setPendingSwitchPitcher(null);
+                  onEndSession(activeSession.id);
+                  onStartSession(targetPitcherId);
+                  setShowPitcherPicker(false);
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-white shadow-xs transition"
+              >
+                End &amp; Switch
               </button>
             </div>
           </div>

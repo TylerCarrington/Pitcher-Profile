@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Player, BaseballEvent } from '../types';
 import { PitchSmartBadge } from './PitchSmartBadge';
 import { calculatePitchSmartStatus } from '../utils/pitchSmart';
-import { User, LogOut, CheckCircle2, AlertTriangle, ChevronRight } from 'lucide-react';
+import { User, LogOut, CheckCircle2, AlertTriangle, ChevronRight, ArrowLeft } from 'lucide-react';
 
 interface LivePitchHeaderProps {
   pitcher: Player;
@@ -25,6 +25,7 @@ interface LivePitchHeaderProps {
   onEndInning?: () => void;
   onEndSession: () => void;
   onEndEvent: () => void;
+  onBackToTeam: () => void;
 }
 
 export const LivePitchHeader: React.FC<LivePitchHeaderProps> = ({
@@ -47,6 +48,7 @@ export const LivePitchHeader: React.FC<LivePitchHeaderProps> = ({
   onEndInning,
   onEndSession,
   onEndEvent,
+  onBackToTeam,
 }) => {
   const [confirmingEndInning, setConfirmingEndInning] = useState(false);
   const pitchSmart = calculatePitchSmartStatus(pitchCount, pitcher.seasonAge, event.scheduledAt);
@@ -106,6 +108,16 @@ export const LivePitchHeader: React.FC<LivePitchHeaderProps> = ({
 
           {/* Top Right Action Buttons */}
           <div className="flex items-center gap-1 shrink-0 ml-auto sm:ml-0">
+            <button
+              type="button"
+              id="exit-session-header-btn"
+              onClick={onBackToTeam}
+              title="Exit live view without ending session"
+              className="px-2 py-1 sm:px-2.5 sm:py-1.5 text-[11px] sm:text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 hover:border-slate-600 transition flex items-center gap-1 active:scale-95"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-slate-400" />
+              <span>Exit View</span>
+            </button>
             <button
               type="button"
               id="end-session-header-btn"

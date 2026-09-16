@@ -505,6 +505,102 @@ export function syncTeamListeners(teams: Team[]): void {
   }
 }
 
+async function fetchAndMergeCoachTeams(coachId: string, email?: string, coachUid?: string) {
+  try {
+    const dbTeams: any[] = [];
+    const teamIds = new Set<string>();
+
+    const searchIds = new Set<string>([coachId]);
+    if (coachUid) searchIds.add(coachUid);
+    if (email) {
+      const cleanEmail = email.trim().toLowerCase();
+      const stableId = `coach_email_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
+      searchIds.add(stableId);
+    }
+
+    const queryPromises: Promise<any>[] = [];
+
+    searchIds.forEach((id) => {
+      const q1 = query(collection(db, 'teams'), where('memberCoachIds', 'array-contains', id));
+      queryPromises.push(getDocs(q1));
+
+      const q2 = query(collection(db, 'teams'), where('createdBy', '==', id));
+      queryPromises.push(getDocs(q2));
+    });
+
+    if (email) {
+      const cleanEmail = email.trim().toLowerCase();
+      const q3 = query(collection(db, 'teams'), where('creatorEmail', '==', cleanEmail));
+      queryPromises.push(getDocs(q3));
+    }
+
+    const results = await Promise.all(queryPromises);
+    results.forEach((snapshot) => {
+      snapshot.forEach((doc: any) => {
+        if (!teamIds.has(doc.id)) {
+          teamIds.add(doc.id);
+          dbTeams.push(doc.data());
+        }
+      });
+    });
+
+    if (dbTeams.length > 0) {
+      const localData = loadData();
+      
+      const remoteTeamsList: Team[] = [];
+      const remotePlayersList: Player[] = [];
+      const remoteEventsList: BaseballEvent[] = [];
+      const remoteSessionsList: PitcherSession[] = [];
+      const remotePitchesList: Pitch[] = [];
+
+      dbTeams.forEach((teamData) => {
+        if (!teamData || !teamData.id) return;
+        
+        const teamRecord: Team = {
+          id: teamData.id,
+          name: teamData.name,
+          imageUrl: teamData.imageUrl || undefined,
+          createdBy: teamData.createdBy || 'coach_creator',
+          createdAt: teamData.createdAt || new Date().toISOString(),
+          memberCoachIds: Array.isArray(teamData.memberCoachIds) ? teamData.memberCoachIds : [],
+          inviteCode: teamData.inviteCode || undefined,
+          inviteCodeCreatedAt: teamData.inviteCodeCreatedAt || undefined,
+          pitchRulePresetId: teamData.pitchRulePresetId || 'usa_pitch_smart',
+        };
+        remoteTeamsList.push(teamRecord);
+
+        if (Array.isArray(teamData.players)) {
+          remotePlayersList.push(...teamData.players);
+        }
+        if (Array.isArray(teamData.events)) {
+          remoteEventsList.push(...teamData.events);
+        }
+        if (Array.isArray(teamData.sessions)) {
+          remoteSessionsList.push(...teamData.sessions);
+        }
+        if (Array.isArray(teamData.pitches)) {
+          remotePitchesList.push(...teamData.pitches);
+        }
+      });
+
+      const remoteDataObj = {
+        coaches: [],
+        teams: remoteTeamsList,
+        players: remotePlayersList,
+        events: remoteEventsList,
+        sessions: remoteSessionsList,
+        pitches: remotePitchesList,
+      };
+
+      const merged = mergeAppData(localData, remoteDataObj);
+      saveData(merged, false); // Consolidate and repair the coach state doc
+      syncTeamListeners(merged.teams);
+    }
+  } catch (err) {
+    console.warn('Direct teams recovery check failed:', err);
+  }
+}
+
 export function initCloudSync(coachEmail?: string, coachUid?: string): () => void {
   const docId = coachEmail
     ? coachEmail.trim().toLowerCase().replace(/[^a-z0-9]/g, '_')
@@ -524,6 +620,9 @@ export function initCloudSync(coachEmail?: string, coachUid?: string): () => voi
   currentCloudDocId = docId;
   isInitialSyncComplete = false;
   notifySyncStatus('syncing');
+
+  // Trigger parallel background recovery search of direct teams
+  fetchAndMergeCoachTeams(docId, coachEmail, coachUid).catch(() => {});
 
   // Immediately initialize listeners for any locally known teams
   const initialData = loadData();

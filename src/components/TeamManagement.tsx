@@ -13,7 +13,6 @@ import {
   Shield,
   UserPlus,
   ArrowRight,
-  Target,
   BarChart3,
   Settings,
   AlertTriangle,
@@ -35,6 +34,7 @@ interface TeamManagementProps {
   selectedTeam: Team | null;
   onSelectTeam: (team: Team) => void;
   onCreateTeam: (name: string, imageUrl?: string, pitchRulePresetId?: PitchRulePresetId) => void;
+  onUpdateTeam: (teamId: string, name: string, imageUrl?: string, pitchRulePresetId?: PitchRulePresetId) => void;
   onJoinTeam: (codeOrLink: string) => { success: boolean; message?: string };
   onDeleteTeam: (teamId: string) => void;
   onRegenerateInviteLink?: (teamId: string) => void;
@@ -61,6 +61,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   selectedTeam,
   onSelectTeam,
   onCreateTeam,
+  onUpdateTeam,
   onJoinTeam,
   onDeleteTeam,
   onRegenerateInviteLink,
@@ -73,12 +74,16 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   onDeletePlayer,
 }) => {
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
+  const [showEditTeamModal, setShowEditTeamModal] = useState(false);
   const [showJoinTeamModal, setShowJoinTeamModal] = useState(false);
   const [showCoachesModal, setShowCoachesModal] = useState(false);
   const [showPresetModal, setShowPresetModal] = useState(false);
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamImage, setNewTeamImage] = useState('');
   const [newTeamPreset, setNewTeamPreset] = useState<PitchRulePresetId>('usa_pitch_smart');
+  const [editTeamName, setEditTeamName] = useState('');
+  const [editTeamImage, setEditTeamImage] = useState('');
+  const [editTeamPreset, setEditTeamPreset] = useState<PitchRulePresetId>('usa_pitch_smart');
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [joinFeedback, setJoinFeedback] = useState<{ error?: string; success?: string } | null>(
     null,
@@ -140,6 +145,22 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     setNewTeamImage('');
     setNewTeamPreset('usa_pitch_smart');
     setShowCreateTeamModal(false);
+  };
+
+  const openEditTeamModal = () => {
+    if (selectedTeam) {
+      setEditTeamName(selectedTeam.name);
+      setEditTeamImage(selectedTeam.imageUrl || '');
+      setEditTeamPreset(selectedTeam.pitchRulePresetId || 'usa_pitch_smart');
+      setShowEditTeamModal(true);
+    }
+  };
+
+  const handleEditTeamSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTeam || !editTeamName.trim()) return;
+    onUpdateTeam(selectedTeam.id, editTeamName.trim(), editTeamImage.trim() || undefined, editTeamPreset);
+    setShowEditTeamModal(false);
   };
 
   const handleJoinTeamSubmit = (e: React.FormEvent) => {
@@ -205,124 +226,6 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
   return (
     <div id="team-management-section" className="space-y-6">
-      {/* Top Header & Team Selector Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-          <div>
-            <h2 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
-              <Users className="w-5 h-5 text-emerald-600" />
-              <span>Teams & Rosters</span>
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Manage your teams, invite coaches, and track active pitchers.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              id="open-join-team-btn"
-              onClick={() => setShowJoinTeamModal(true)}
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1.5"
-            >
-              <Link className="w-3.5 h-3.5" />
-              <span>Join with Code</span>
-            </button>
-            <button
-              type="button"
-              id="open-create-team-btn"
-              onClick={() => setShowCreateTeamModal(true)}
-              className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" />
-              <span>New Team</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Team Tabs / Carousel */}
-        <div className="pt-4">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-            Your Teams ({teams.length})
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {teams.map((t) => {
-              const isSelected = selectedTeam?.id === t.id;
-              const isCreator = t.createdBy === currentCoach.id;
-
-              return (
-                <div
-                  key={t.id}
-                  id={`team-card-${t.id}`}
-                  onClick={() => onSelectTeam(t)}
-                  className={`relative p-3.5 rounded-xl border transition cursor-pointer text-left ${
-                    isSelected
-                      ? 'bg-emerald-50/70 border-emerald-500 shadow-xs ring-1 ring-emerald-500/20'
-                      : 'bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      {t.imageUrl ? (
-                        <img
-                          src={t.imageUrl}
-                          alt={t.name}
-                          className="w-10 h-10 rounded-lg object-cover border border-slate-200 shrink-0"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-lg bg-slate-900 text-emerald-400 font-black text-sm flex items-center justify-center shrink-0">
-                          {t.name.substring(0, 2).toUpperCase()}
-                        </div>
-                      )}
-                      <div className="min-w-0">
-                        <h3 className="font-bold text-sm text-slate-900 truncate">{t.name}</h3>
-                        <div className="flex items-center gap-1 text-[11px] text-slate-500 mt-0.5">
-                          {isCreator ? (
-                            <span className="flex items-center gap-1 text-emerald-700 font-medium">
-                              <Shield className="w-3 h-3 text-emerald-600" />
-                              Creator
-                            </span>
-                          ) : (
-                            <span className="text-slate-500">Coach Member</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      title="Copy Share Link"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        copyShareLink(t);
-                      }}
-                      className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition"
-                    >
-                      {copiedCode === t.id ? (
-                        <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-0.5">
-                          <Check className="w-3.5 h-3.5" /> Copied
-                        </span>
-                      ) : (
-                        <Share2 className="w-3.5 h-3.5" />
-                      )}
-                    </button>
-                  </div>
-
-                  <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
-                    <span className="font-mono text-slate-500">Code: {t.inviteCode}</span>
-                    {isSelected && (
-                      <span className="font-bold text-emerald-600 flex items-center gap-1">
-                        Active Team <ArrowRight className="w-3 h-3" />
-                      </span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
       {/* Selected Team's Roster Section */}
       {selectedTeam && (
         <div id="roster-management-section" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 space-y-4">
@@ -376,24 +279,35 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
 
               {/* Delete team button: Only creator can delete */}
               {isSelectedTeamCreator && (
-                <button
-                  type="button"
-                  id="delete-team-btn"
-                  onClick={() => {
-                    if (
-                      confirm(
-                        `Are you sure you want to delete "${selectedTeam.name}" and all its events? This cannot be undone.`,
-                      )
-                    ) {
-                      onDeleteTeam(selectedTeam.id);
-                    }
-                  }}
-                  className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1"
-                  title="Team Creator Permission: Delete Team"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                  <span className="hidden sm:inline">Delete Team</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={openEditTeamModal}
+                    className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition flex items-center gap-1"
+                    title="Team Creator Permission: Edit Team"
+                  >
+                    <Edit2 className="w-3.5 h-3.5 text-emerald-500" />
+                    <span className="hidden sm:inline">Edit Team</span>
+                  </button>
+                  <button
+                    type="button"
+                    id="delete-team-btn"
+                    onClick={() => {
+                      if (
+                        confirm(
+                          `Are you sure you want to delete "${selectedTeam.name}" and all its events? This cannot be undone.`,
+                        )
+                      ) {
+                        onDeleteTeam(selectedTeam.id);
+                      }
+                    }}
+                    className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1"
+                    title="Team Creator Permission: Delete Team"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                    <span className="hidden sm:inline">Delete Team</span>
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -518,7 +432,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                         className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-1 rounded-lg border border-emerald-200 transition"
                         title="View scouting report, heatmaps, and pitch counts"
                       >
-                        <Target className="w-3 h-3 text-emerald-600" />
+                        <BarChart3 className="w-3 h-3 text-emerald-600" />
                         <span>Scouting</span>
                       </button>
 
@@ -632,6 +546,94 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   className="px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
                 >
                   Create Team
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Team Modal */}
+      {showEditTeamModal && selectedTeam && (
+        <div
+          id="edit-team-modal"
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+        >
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <h3 className="font-bold text-slate-900 text-base">Edit Team</h3>
+              <button
+                type="button"
+                onClick={() => setShowEditTeamModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditTeamSubmit} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Team Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Westlake Wildcats 11U"
+                  value={editTeamName}
+                  onChange={(e) => setEditTeamName(e.target.value)}
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Team Logo URL (optional)
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://example.com/logo.png"
+                  value={editTeamImage}
+                  onChange={(e) => setEditTeamImage(e.target.value)}
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Pitch Limit Ruleset *
+                </label>
+                <select
+                  required
+                  value={editTeamPreset}
+                  onChange={(e) => setEditTeamPreset(e.target.value as PitchRulePresetId)}
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+                >
+                  {Object.values(PITCH_RULE_PRESETS).map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Sets the max pitches and required rest days for pitchers on this team.
+                </p>
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditTeamModal(false)}
+                  className="flex-1 px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  id="submit-edit-team-btn"
+                  className="flex-1 px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg shadow-sm transition"
+                >
+                  Save Changes
                 </button>
               </div>
             </form>

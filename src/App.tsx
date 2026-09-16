@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { auth } from './firebase';
+import { signOut } from 'firebase/auth';
 import {
   Coach,
   Team,
@@ -27,6 +29,7 @@ import {
   removeCoachFromTeam,
   leaveTeam,
   updateTeamPitchPreset,
+  updateTeam,
   getPlayersForTeam,
   getPlayerById,
   savePlayer,
@@ -58,18 +61,22 @@ import { EventManagement } from './components/EventManagement';
 import { LiveSessionView } from './components/LiveSessionView';
 import { EventReviewSummary } from './components/EventReviewSummary';
 import { CoachSwitcher } from './components/CoachSwitcher';
+import { TeamSwitcher } from './components/TeamSwitcher';
 import { GoogleSignInScreen } from './components/GoogleSignInScreen';
-import { Activity, Users, Calendar, ArrowLeft, Target } from 'lucide-react';
+import { PostSignInScreen } from './components/PostSignInScreen';
+import { Activity, Users, Calendar, ArrowLeft, Plus, Link } from 'lucide-react';
 
 export default function App() {
   const [isSignedIn, setIsSignedIn] = useState<boolean>(() => {
-    return localStorage.getItem('pitch_tracker_signed_in') !== 'false';
+    return localStorage.getItem('pitch_tracker_signed_in') === 'true';
   });
-  const [currentCoach, setCurrentCoach] = useState<Coach>(getCurrentCoach());
+  const [currentCoach, setCurrentCoach] = useState<Coach | null>(getCurrentCoach());
   const [allCoaches, setAllCoaches] = useState<Coach[]>(getAllCoaches());
   const [teams, setTeams] = useState<Team[]>([]);
-  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'events' | 'roster'>('events');
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(() => {
+    return localStorage.getItem('pitch_tracker_last_team_id') || null;
+  });
+  const [activeTab, setActiveTab] = useState<'events' | 'roster'>('roster');
 
   // Event & Session active states
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -84,15 +91,25 @@ export default function App() {
     setCurrentCoach(coach);
     setAllCoaches(getAllCoaches());
 
-    const coachTeams = getTeamsForCoach(coach.id);
-    setTeams(coachTeams);
+    if (coach) {
+      const coachTeams = getTeamsForCoach(coach.id);
+      setTeams(coachTeams);
 
-    // Keep selected team valid
-    if (coachTeams.length > 0) {
-      if (!selectedTeamId || !coachTeams.some((t) => t.id === selectedTeamId)) {
-        setSelectedTeamId(coachTeams[0].id);
+      // Keep selected team valid and prioritize last selected team
+      if (coachTeams.length > 0) {
+        const storedLastTeamId = localStorage.getItem('pitch_tracker_last_team_id');
+        const candidateTeam = coachTeams.find((t) => t.id === storedLastTeamId);
+        if (candidateTeam) {
+          setSelectedTeamId(candidateTeam.id);
+        } else if (!selectedTeamId || !coachTeams.some((t) => t.id === selectedTeamId)) {
+          setSelectedTeamId(coachTeams[0].id);
+          localStorage.setItem('pitch_tracker_last_team_id', coachTeams[0].id);
+        }
+      } else {
+        setSelectedTeamId(null);
       }
     } else {
+      setTeams([]);
       setSelectedTeamId(null);
     }
   }, [selectedTeamId]);
@@ -109,6 +126,11 @@ export default function App() {
     const joinCode = params.get('join');
     if (joinCode) {
       const coach = getCurrentCoach();
+      if (!coach) {
+        // If not signed in, we can't auto-join here without an auth flow,
+        // but for now, just silently return or we could redirect.
+        return;
+      }
       const res = joinTeamByCode(joinCode, coach.id);
       if (res.success && res.team) {
         setJoinNotification(`You joined ${res.team.name}!`);
@@ -151,7 +173,12 @@ export default function App() {
     syncStore();
   };
 
-  const handleSignOut = () => {
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.error(e);
+    }
     setIsSignedIn(false);
     localStorage.setItem('pitch_tracker_signed_in', 'false');
   };
@@ -164,7 +191,13 @@ export default function App() {
   };
 
   // Handlers for teams
+  const handleSelectTeam = (team: Team) => {
+    setSelectedTeamId(team.id);
+    localStorage.setItem('pitch_tracker_last_team_id', team.id);
+  };
+
   const handleCreateTeam = (name: string, imageUrl?: string, pitchRulePresetId?: PitchRulePresetId) => {
+    if (!currentCoach) return;
     const newTeam = saveTeam({
       name,
       imageUrl,
@@ -172,6 +205,12 @@ export default function App() {
       pitchRulePresetId: pitchRulePresetId || 'usa_pitch_smart',
     });
     setSelectedTeamId(newTeam.id);
+    localStorage.setItem('pitch_tracker_last_team_id', newTeam.id);
+  };
+
+  const handleUpdateTeam = (teamId: string, name: string, imageUrl?: string, pitchRulePresetId?: PitchRulePresetId) => {
+    updateTeam(teamId, { name, imageUrl, pitchRulePresetId });
+    syncStore();
   };
 
   const handleUpdateTeamPitchPreset = (teamId: string, presetId: PitchRulePresetId) => {
@@ -180,12 +219,21 @@ export default function App() {
   };
 
   const handleJoinTeam = (codeOrLink: string) => {
-    return joinTeamByCode(codeOrLink, currentCoach.id);
+    if (!currentCoach) return { success: false, message: 'Not signed in' };
+    const res = joinTeamByCode(codeOrLink, currentCoach.id);
+    if (res.success && res.team) {
+      setSelectedTeamId(res.team.id);
+      localStorage.setItem('pitch_tracker_last_team_id', res.team.id);
+      syncStore();
+    }
+    return res;
   };
 
   const handleDeleteTeam = (teamId: string) => {
+    if (!currentCoach) return;
     const res = deleteTeam(teamId, currentCoach.id);
     if (res.success) {
+      localStorage.removeItem('pitch_tracker_last_team_id');
       syncStore();
     } else if (res.error) {
       alert(res.error);
@@ -200,6 +248,7 @@ export default function App() {
   };
 
   const handleRemoveCoach = (teamId: string, coachId: string) => {
+    if (!currentCoach) return;
     const res = removeCoachFromTeam(teamId, coachId, currentCoach.id);
     if (res.success) {
       syncStore();
@@ -209,6 +258,7 @@ export default function App() {
   };
 
   const handleLeaveTeam = (teamId: string) => {
+    if (!currentCoach) return;
     const res = leaveTeam(teamId, currentCoach.id);
     if (res.success) {
       syncStore();
@@ -244,6 +294,7 @@ export default function App() {
     location?: string;
     scheduledAt: string;
   }) => {
+    if (!currentCoach) return;
     const newEv = createEvent({
       ...input,
       createdBy: currentCoach.id,
@@ -342,12 +393,23 @@ export default function App() {
     syncStore();
   };
 
-  // 0. If user is signed out, show Mock Google Sign-In Screen
-  if (!isSignedIn) {
+  // 0. If user is signed out or no valid profile exists, show Google Sign-In Screen
+  if (!isSignedIn || !currentCoach) {
     return (
       <GoogleSignInScreen
         onSignIn={handleGoogleSignIn}
-        availableCoaches={allCoaches}
+      />
+    );
+  }
+
+  // 0.5 If user is signed in but has no teams yet, show the Post-Sign-In Onboarding Screen
+  if (teams.length === 0) {
+    return (
+      <PostSignInScreen
+        currentCoach={currentCoach}
+        onCreateTeam={handleCreateTeam}
+        onJoinTeam={handleJoinTeam}
+        onSignOut={handleSignOut}
       />
     );
   }
@@ -402,13 +464,16 @@ export default function App() {
     <div className="min-h-screen bg-slate-100/70 text-slate-900 flex flex-col">
       {/* Global Navigation Bar */}
       <header className="bg-slate-950 text-white border-b border-slate-800 sticky top-0 z-30 shadow-md">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+        <div className="max-w-5xl mx-auto px-4 py-2.5 flex items-center justify-between gap-3">
           {/* Brand Identity */}
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500 text-slate-950 flex items-center justify-center font-black shadow-xs">
-              <Activity className="w-5 h-5" />
-            </div>
-            <div>
+            <img
+              src="/assets/pitch.png"
+              alt="Pitch Tracker"
+              referrerPolicy="no-referrer"
+              className="w-8 h-8 rounded-lg object-cover shadow-sm border border-emerald-500/30 shrink-0"
+            />
+            <div className="hidden sm:block">
               <h1 className="font-black text-base tracking-tight text-white leading-none">
                 Pitch Tracker
               </h1>
@@ -418,13 +483,26 @@ export default function App() {
             </div>
           </div>
 
-          {/* Coach Switcher & Google Sign-Out */}
-          <CoachSwitcher
-            currentCoach={currentCoach}
-            allCoaches={allCoaches}
-            onSelectCoach={handleCoachSwitch}
-            onSignOut={handleSignOut}
-          />
+          {/* Right Header Controls: Team Switcher + Coach Switcher */}
+          <div className="flex items-center gap-2">
+            {currentCoach && (
+              <TeamSwitcher
+                teams={teams}
+                selectedTeam={selectedTeam}
+                currentCoach={currentCoach}
+                onSelectTeam={handleSelectTeam}
+                onCreateTeam={handleCreateTeam}
+                onJoinTeam={handleJoinTeam}
+              />
+            )}
+
+            <CoachSwitcher
+              currentCoach={currentCoach}
+              allCoaches={allCoaches}
+              onSelectCoach={handleCoachSwitch}
+              onSignOut={handleSignOut}
+            />
+          </div>
         </div>
       </header>
 
@@ -440,29 +518,48 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="max-w-5xl w-full mx-auto px-4 py-6 flex-1 space-y-6">
-        {/* Teams Management */}
-        <TeamManagement
-          currentCoach={currentCoach}
-          teams={teams}
-          selectedTeam={selectedTeam}
-          onSelectTeam={(t) => setSelectedTeamId(t.id)}
-          onCreateTeam={handleCreateTeam}
-          onJoinTeam={handleJoinTeam}
-          onDeleteTeam={handleDeleteTeam}
-          onRegenerateInviteLink={handleRegenerateInviteLink}
-          onRemoveCoach={handleRemoveCoach}
-          onLeaveTeam={handleLeaveTeam}
-          onUpdateTeamPitchPreset={handleUpdateTeamPitchPreset}
-          players={teamPlayers}
-          onSavePlayer={handleSavePlayer}
-          onDeletePlayer={handleDeletePlayer}
-        />
-
-        {/* Selected Team Events Hub */}
-        {selectedTeam && (
-          <div className="space-y-4">
-            {/* View Switcher Tabs (Events vs Roster) */}
+        {!selectedTeam ? (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center max-w-md mx-auto my-12 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
+              <Users className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-slate-900">No Team Selected</h3>
+              <p className="text-xs text-slate-500">
+                Create a squad or join an existing team with an invite code from the team switcher above to manage rosters and track pitches.
+              </p>
+            </div>
+            <div className="pt-2 flex justify-center">
+              {currentCoach && (
+                <TeamSwitcher
+                  teams={teams}
+                  selectedTeam={selectedTeam}
+                  currentCoach={currentCoach}
+                  onSelectTeam={handleSelectTeam}
+                  onCreateTeam={handleCreateTeam}
+                  onJoinTeam={handleJoinTeam}
+                />
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {/* View Switcher Tabs (Roster vs Events) */}
             <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+              <button
+                type="button"
+                id="tab-roster-btn"
+                onClick={() => setActiveTab('roster')}
+                className={`px-4 py-2 text-xs font-bold rounded-lg transition flex items-center gap-2 ${
+                  activeTab === 'roster'
+                    ? 'bg-slate-900 text-white shadow-xs'
+                    : 'text-slate-600 hover:bg-slate-200/70'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>Roster &amp; Pitch Limits ({teamPlayers.length})</span>
+              </button>
+
               <button
                 type="button"
                 id="tab-events-btn"
@@ -476,23 +573,30 @@ export default function App() {
                 <Calendar className="w-4 h-4" />
                 <span>Events &amp; Games ({teamEvents.length})</span>
               </button>
-
-              <button
-                type="button"
-                id="tab-roster-btn"
-                onClick={() => setActiveTab('roster')}
-                className={`px-4 py-2 text-xs font-bold rounded-lg transition flex items-center gap-2 ${
-                  activeTab === 'roster'
-                    ? 'bg-slate-900 text-white shadow-xs'
-                    : 'text-slate-600 hover:bg-slate-200/70'
-                }`}
-              >
-                <Users className="w-4 h-4" />
-                <span>Roster Management ({teamPlayers.length})</span>
-              </button>
             </div>
 
-            {/* Events Tab */}
+            {/* Tab 1: Roster & Pitch Count Management */}
+            {activeTab === 'roster' && (
+              <TeamManagement
+                currentCoach={currentCoach}
+                teams={teams}
+                selectedTeam={selectedTeam}
+                onSelectTeam={handleSelectTeam}
+                onCreateTeam={handleCreateTeam}
+                onUpdateTeam={handleUpdateTeam}
+                onJoinTeam={handleJoinTeam}
+                onDeleteTeam={handleDeleteTeam}
+                onRegenerateInviteLink={handleRegenerateInviteLink}
+                onRemoveCoach={handleRemoveCoach}
+                onLeaveTeam={handleLeaveTeam}
+                onUpdateTeamPitchPreset={handleUpdateTeamPitchPreset}
+                players={teamPlayers}
+                onSavePlayer={handleSavePlayer}
+                onDeletePlayer={handleDeletePlayer}
+              />
+            )}
+
+            {/* Tab 2: Events & Games Management */}
             {activeTab === 'events' && (
               <EventManagement
                 currentCoach={currentCoach}
@@ -503,14 +607,6 @@ export default function App() {
                 onDeleteEvent={handleDeleteEvent}
                 onReopenEvent={handleReopenEvent}
               />
-            )}
-
-            {/* Roster Tab is also displayed inside TeamManagement or quick jump */}
-            {activeTab === 'roster' && (
-              <div className="text-xs text-slate-500 bg-white p-4 rounded-xl border border-slate-200">
-                You can add, edit, or remove players from the {selectedTeam.name} roster above.
-                These players will be available to pitch in both Bullpen sessions and Games.
-              </div>
             )}
           </div>
         )}

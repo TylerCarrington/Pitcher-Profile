@@ -14,9 +14,9 @@ import {
   SafetyWarningFlag,
 } from './types';
 
-const STORAGE_KEY = 'pitch_tracker_data_v1';
-const CURRENT_COACH_KEY = 'pitch_tracker_current_coach_v1';
-const AUTH_STATUS_KEY = 'pitch_tracker_auth_status_v1';
+const STORAGE_KEY = 'pitch_tracker_data_v2';
+const CURRENT_COACH_KEY = 'pitch_tracker_current_coach_v2';
+const AUTH_STATUS_KEY = 'pitch_tracker_auth_status_v2';
 
 interface AppData {
   coaches: Coach[];
@@ -27,313 +27,17 @@ interface AppData {
   pitches: Pitch[];
 }
 
-const DEFAULT_COACHES: Coach[] = [
-  {
-    id: 'coach_tyler',
-    name: 'Coach Tyler Carrington',
-    email: 'TylerCarringtonWA@gmail.com',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&auto=format&fit=crop&q=80',
-    role: 'head_coach',
-  },
-  {
-    id: 'coach_davis',
-    name: 'Coach Davis',
-    email: 'davis.assistant@youthbaseball.org',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
-    role: 'assistant_coach',
-  },
-];
+const DEFAULT_COACHES: Coach[] = [];
 
-const DEFAULT_TEAMS: Team[] = [
-  {
-    id: 'team_hawks_101',
-    name: 'Eastside Hawks 12U',
-    imageUrl: 'https://images.unsplash.com/photo-1508344928928-7165b67de128?w=300&auto=format&fit=crop&q=80',
-    createdBy: 'coach_tyler',
-    createdAt: new Date(Date.now() - 86400000 * 14).toISOString(),
-    memberCoachIds: ['coach_tyler', 'coach_davis'],
-    inviteCode: 'HAWKS-2026',
-    inviteCodeCreatedAt: new Date(Date.now() - 86400000 * 14).toISOString(),
-    pitchRulePresetId: 'usa_pitch_smart',
-  },
-];
+const DEFAULT_TEAMS: Team[] = [];
 
-const DEFAULT_PLAYERS: Player[] = [
-  {
-    id: 'player_11',
-    teamId: 'team_hawks_101',
-    name: 'Liam Parker',
-    jerseyNumber: '11',
-    seasonAge: 12,
-    imageUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=200&auto=format&fit=crop&q=80',
-    throws: 'R',
-    bats: 'R',
-    createdAt: new Date(Date.now() - 86400000 * 10).toISOString(),
-  },
-  {
-    id: 'player_24',
-    teamId: 'team_hawks_101',
-    name: 'Marcus Vance',
-    jerseyNumber: '24',
-    seasonAge: 12,
-    imageUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=200&auto=format&fit=crop&q=80',
-    throws: 'L',
-    bats: 'L',
-    createdAt: new Date(Date.now() - 86400000 * 10).toISOString(),
-  },
-  {
-    id: 'player_7',
-    teamId: 'team_hawks_101',
-    name: 'Noah Miller',
-    jerseyNumber: '7',
-    seasonAge: 11,
-    imageUrl: 'https://images.unsplash.com/photo-1501196354995-cbb51c65aaea?w=200&auto=format&fit=crop&q=80',
-    throws: 'R',
-    bats: 'R',
-    createdAt: new Date(Date.now() - 86400000 * 9).toISOString(),
-  },
-  {
-    id: 'player_18',
-    teamId: 'team_hawks_101',
-    name: 'Jackson Cole',
-    jerseyNumber: '18',
-    seasonAge: 12,
-    imageUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=200&auto=format&fit=crop&q=80',
-    throws: 'R',
-    bats: 'R',
-    createdAt: new Date(Date.now() - 86400000 * 8).toISOString(),
-  },
-];
+const DEFAULT_PLAYERS: Player[] = [];
 
-const DEFAULT_EVENTS: BaseballEvent[] = [
-  {
-    id: 'event_game_1',
-    teamId: 'team_hawks_101',
-    type: 'game',
-    opponent: 'Cascade Mariners',
-    location: 'Memorial Park - Field 2',
-    scheduledAt: new Date().toISOString(),
-    status: 'in_progress',
-    createdBy: 'coach_tyler',
-    createdAt: new Date().toISOString(),
-  },
-];
+const DEFAULT_EVENTS: BaseballEvent[] = [];
 
-const DEFAULT_SESSIONS: PitcherSession[] = [
-  {
-    id: 'session_demo_1',
-    eventId: 'event_game_1',
-    pitcherId: 'player_11',
-    status: 'active',
-    startedAt: new Date(Date.now() - 3600000).toISOString(),
-    coachNotes: {
-      coach_tyler: 'Great fastball velocity today; working on keeping changeup down in the zone.',
-    },
-  },
-];
+const DEFAULT_SESSIONS: PitcherSession[] = [];
 
-const DEFAULT_PITCHES: Pitch[] = [
-  {
-    id: 'pitch_sample_1',
-    sessionId: 'session_demo_1',
-    eventId: 'event_game_1',
-    pitcherId: 'player_11',
-    pitchNumber: 1,
-    pitchType: 'fastball',
-    outcome: 'strike',
-    strikeDetail: 'called',
-    location: { x: -0.22, y: -0.25, region: 'strike_zone', cellIndex: 1, label: 'Top Left (1)' },
-    ballsBefore: 0,
-    strikesBefore: 0,
-    ballsAfter: 0,
-    strikesAfter: 1,
-    timestamp: new Date(Date.now() - 3500000).toISOString(),
-    recordedBy: 'coach_tyler',
-  },
-  {
-    id: 'pitch_sample_2',
-    sessionId: 'session_demo_1',
-    eventId: 'event_game_1',
-    pitcherId: 'player_11',
-    pitchNumber: 2,
-    pitchType: 'fastball',
-    outcome: 'strike',
-    strikeDetail: 'swinging',
-    location: { x: 0.15, y: -0.1, region: 'strike_zone', cellIndex: 5, label: 'Heart of Zone (5)' },
-    ballsBefore: 0,
-    strikesBefore: 1,
-    ballsAfter: 0,
-    strikesAfter: 2,
-    timestamp: new Date(Date.now() - 3400000).toISOString(),
-    recordedBy: 'coach_tyler',
-  },
-  {
-    id: 'pitch_sample_3',
-    sessionId: 'session_demo_1',
-    eventId: 'event_game_1',
-    pitcherId: 'player_11',
-    pitchNumber: 3,
-    pitchType: 'changeup',
-    outcome: 'ball',
-    location: { x: 0.52, y: 0.65, region: 'near_miss', label: 'Near Miss: Low & Right' },
-    ballsBefore: 0,
-    strikesBefore: 2,
-    ballsAfter: 1,
-    strikesAfter: 2,
-    timestamp: new Date(Date.now() - 3300000).toISOString(),
-    recordedBy: 'coach_tyler',
-  },
-  {
-    id: 'pitch_sample_4',
-    sessionId: 'session_demo_1',
-    eventId: 'event_game_1',
-    pitcherId: 'player_11',
-    pitchNumber: 4,
-    pitchType: 'fastball',
-    outcome: 'strike',
-    strikeDetail: 'swinging',
-    location: { x: 0.28, y: -0.35, region: 'strike_zone', cellIndex: 3, label: 'Top Right (3)' },
-    ballsBefore: 1,
-    strikesBefore: 2,
-    ballsAfter: 0,
-    strikesAfter: 0,
-    timestamp: new Date(Date.now() - 3200000).toISOString(),
-    recordedBy: 'coach_tyler',
-  },
-  {
-    id: 'pitch_sample_5',
-    sessionId: 'session_demo_1',
-    eventId: 'event_game_1',
-    pitcherId: 'player_11',
-    pitchNumber: 5,
-    pitchType: 'fastball',
-    outcome: 'strike',
-    strikeDetail: 'called',
-    location: { x: -0.05, y: 0.28, region: 'strike_zone', cellIndex: 8, label: 'Bottom Middle (8)' },
-    ballsBefore: 0,
-    strikesBefore: 0,
-    ballsAfter: 0,
-    strikesAfter: 1,
-    timestamp: new Date(Date.now() - 3100000).toISOString(),
-    recordedBy: 'coach_tyler',
-  },
-  {
-    id: 'pitch_sample_6',
-    sessionId: 'session_demo_1',
-    eventId: 'event_game_1',
-    pitcherId: 'player_11',
-    pitchNumber: 6,
-    pitchType: 'curveball',
-    outcome: 'ball',
-    location: { x: -0.58, y: 0.72, region: 'near_miss', label: 'Near Miss: Low & Left' },
-    ballsBefore: 0,
-    strikesBefore: 1,
-    ballsAfter: 1,
-    strikesAfter: 1,
-    timestamp: new Date(Date.now() - 3000000).toISOString(),
-    recordedBy: 'coach_tyler',
-  },
-  {
-    id: 'pitch_sample_7',
-    sessionId: 'session_demo_1',
-    eventId: 'event_game_1',
-    pitcherId: 'player_11',
-    pitchNumber: 7,
-    pitchType: 'fastball',
-    outcome: 'foul',
-    location: { x: 0.22, y: 0.12, region: 'strike_zone', cellIndex: 6, label: 'Middle Right (6)' },
-    ballsBefore: 1,
-    strikesBefore: 1,
-    ballsAfter: 1,
-    strikesAfter: 2,
-    timestamp: new Date(Date.now() - 2900000).toISOString(),
-    recordedBy: 'coach_tyler',
-  },
-  {
-    id: 'pitch_sample_8',
-    sessionId: 'session_demo_1',
-    eventId: 'event_game_1',
-    pitcherId: 'player_11',
-    pitchNumber: 8,
-    pitchType: 'changeup',
-    outcome: 'in_play',
-    inPlayDetail: 'out',
-    location: { x: 0.05, y: 0.32, region: 'strike_zone', cellIndex: 8, label: 'Bottom Middle (8)' },
-    ballsBefore: 1,
-    strikesBefore: 2,
-    ballsAfter: 0,
-    strikesAfter: 0,
-    timestamp: new Date(Date.now() - 2800000).toISOString(),
-    recordedBy: 'coach_tyler',
-  },
-  {
-    id: 'pitch_sample_9',
-    sessionId: 'session_demo_1',
-    eventId: 'event_game_1',
-    pitcherId: 'player_11',
-    pitchNumber: 9,
-    pitchType: 'fastball',
-    outcome: 'strike',
-    strikeDetail: 'called',
-    location: { x: 0.25, y: 0.05, region: 'strike_zone', cellIndex: 6, label: 'Middle Right (6)' },
-    ballsBefore: 0,
-    strikesBefore: 0,
-    ballsAfter: 0,
-    strikesAfter: 1,
-    timestamp: new Date(Date.now() - 2700000).toISOString(),
-    recordedBy: 'coach_tyler',
-  },
-  {
-    id: 'pitch_sample_10',
-    sessionId: 'session_demo_1',
-    eventId: 'event_game_1',
-    pitcherId: 'player_11',
-    pitchNumber: 10,
-    pitchType: 'fastball',
-    outcome: 'ball',
-    location: { x: -0.15, y: -0.65, region: 'near_miss', label: 'Near Miss: High & Middle' },
-    ballsBefore: 0,
-    strikesBefore: 1,
-    ballsAfter: 1,
-    strikesAfter: 1,
-    timestamp: new Date(Date.now() - 2600000).toISOString(),
-    recordedBy: 'coach_tyler',
-  },
-  {
-    id: 'pitch_sample_11',
-    sessionId: 'session_demo_1',
-    eventId: 'event_game_1',
-    pitcherId: 'player_11',
-    pitchNumber: 11,
-    pitchType: 'changeup',
-    outcome: 'strike',
-    strikeDetail: 'swinging',
-    location: { x: 0.18, y: 0.28, region: 'strike_zone', cellIndex: 9, label: 'Bottom Right (9)' },
-    ballsBefore: 1,
-    strikesBefore: 1,
-    ballsAfter: 1,
-    strikesAfter: 2,
-    timestamp: new Date(Date.now() - 2500000).toISOString(),
-    recordedBy: 'coach_tyler',
-  },
-  {
-    id: 'pitch_sample_12',
-    sessionId: 'session_demo_1',
-    eventId: 'event_game_1',
-    pitcherId: 'player_11',
-    pitchNumber: 12,
-    pitchType: 'fastball',
-    outcome: 'in_play',
-    inPlayDetail: 'safe',
-    location: { x: -0.1, y: 0.02, region: 'strike_zone', cellIndex: 5, label: 'Heart of Zone (5)' },
-    ballsBefore: 1,
-    strikesBefore: 2,
-    ballsAfter: 0,
-    strikesAfter: 0,
-    timestamp: new Date(Date.now() - 2400000).toISOString(),
-    recordedBy: 'coach_tyler',
-  },
-];
+const DEFAULT_PITCHES: Pitch[] = [];
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -355,13 +59,6 @@ function loadData(): AppData {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.teams)) {
-        // If pitches or sessions empty in old state, seed defaults for rich experience
-        if (!parsed.sessions || parsed.sessions.length === 0) {
-          parsed.sessions = DEFAULT_SESSIONS;
-        }
-        if (!parsed.pitches || parsed.pitches.length === 0) {
-          parsed.pitches = DEFAULT_PITCHES;
-        }
         return parsed;
       }
     }
@@ -437,12 +134,12 @@ export function signOutCoach(): void {
   notify();
 }
 
-export function getCurrentCoach(): Coach {
+export function getCurrentCoach(): Coach | null {
   const data = loadData();
   const currentId = localStorage.getItem(CURRENT_COACH_KEY);
   const found = data.coaches.find((c) => c.id === currentId);
   if (found) return found;
-  return data.coaches[0] || DEFAULT_COACHES[0];
+  return data.coaches[0] || null;
 }
 
 export function setCurrentCoachId(coachId: string): void {
@@ -457,6 +154,7 @@ export function getAllCoaches(): Coach[] {
 
 // Teams
 export function getTeamsForCoach(coachId: string): Team[] {
+  if (!coachId) return [];
   const data = loadData();
   return data.teams.filter(
     (t) => t.createdBy === coachId || t.memberCoachIds.includes(coachId),
@@ -516,6 +214,26 @@ export function updateTeamPitchPreset(
   const team = data.teams.find((t) => t.id === teamId);
   if (!team) return null;
   team.pitchRulePresetId = presetId;
+  saveData(data);
+  return team;
+}
+
+export function updateTeam(
+  teamId: string,
+  updates: { name: string; imageUrl?: string; pitchRulePresetId?: PitchRulePresetId }
+): Team | null {
+  const data = loadData();
+  const team = data.teams.find((t) => t.id === teamId);
+  if (!team) return null;
+  
+  team.name = updates.name.trim();
+  if (updates.imageUrl !== undefined) {
+    team.imageUrl = updates.imageUrl.trim() || undefined;
+  }
+  if (updates.pitchRulePresetId) {
+    team.pitchRulePresetId = updates.pitchRulePresetId;
+  }
+  
   saveData(data);
   return team;
 }

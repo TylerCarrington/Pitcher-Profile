@@ -181,7 +181,10 @@ export const StrikeZoneGrid: React.FC<StrikeZoneGridProps> = ({
   return (
     <div id="strike-zone-wrapper" className="flex flex-col items-center select-none touch-none">
       {/* Visual Instruction & Current Location HUD */}
-      <div className="w-full max-w-[340px] flex items-center justify-between mb-2 text-xs">
+      <div
+        className="w-full flex items-center justify-between mb-1.5 sm:mb-2 text-xs"
+        style={{ maxWidth: size }}
+      >
         <div className="flex items-center gap-1.5 font-medium text-slate-700">
           <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
           <span className="font-semibold text-slate-800">

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   BaseballEvent,
   PitcherSession,
@@ -27,6 +27,10 @@ import {
   RotateCcw,
   Trash2,
   History,
+  LogOut,
+  CheckCircle2,
+  Info,
+  X,
 } from 'lucide-react';
 
 interface LiveSessionViewProps {
@@ -83,7 +87,37 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
   onEndInning,
 }) => {
   const [pendingLocation, setPendingLocation] = useState<PitchLocation | null>(null);
+  const [pendingStrike, setPendingStrike] = useState(false);
+  const [strikeSourceLocation, setStrikeSourceLocation] = useState<PitchLocation | null>(null);
+  const [selectedPitchType, setSelectedPitchType] = useState<PitchType>('fastball');
+  const [autoLogNotice, setAutoLogNotice] = useState<string | null>(null);
+  const isAutoLoggingRef = useRef(false);
+
   const [showPitcherPicker, setShowPitcherPicker] = useState(!activeSession || !activePitcher);
+  const [showEndSessionConfirm, setShowEndSessionConfirm] = useState(false);
+  const [showEndEventConfirm, setShowEndEventConfirm] = useState(false);
+  const [sessionToDelete, setSessionToDelete] = useState<PitcherSession | null>(null);
+  const [showFastEntryModal, setShowFastEntryModal] = useState(false);
+
+  // Responsive strike zone grid sizing for mobile single-screen fit
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 640 : false,
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Auto-dismiss the auto-log notification after 2.5s
+  useEffect(() => {
+    if (!autoLogNotice) return;
+    const timer = setTimeout(() => setAutoLogNotice(null), 2500);
+    return () => clearTimeout(timer);
+  }, [autoLogNotice]);
 
   // Derive current count from latest pitch
   const latestPitch = sessionPitches[sessionPitches.length - 1];
@@ -94,6 +128,55 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
   const gameMetrics = useMemo(() => {
     return calculateGamePitchingMetrics(sessionPitches);
   }, [sessionPitches]);
+
+  const handlePendingStrikeChange = (isPending: boolean) => {
+    setPendingStrike(isPending);
+    if (isPending) {
+      // Retain the location that was chosen before clicking Strike
+      setStrikeSourceLocation(pendingLocation);
+    } else {
+      setStrikeSourceLocation(null);
+    }
+  };
+
+  const handleLocationChange = (newLocation: PitchLocation | null) => {
+    // If a location was picked, Strike was clicked, and coach taps a location again without picking sub-detail:
+    // Auto-log the strike with the previous location, close the modal, and assign newLocation to the next pitch!
+    if (pendingStrike && strikeSourceLocation && newLocation && !isAutoLoggingRef.current) {
+      isAutoLoggingRef.current = true;
+
+      if (activeSession && activePitcher) {
+        onRecordPitch({
+          sessionId: activeSession.id,
+          eventId: event.id,
+          pitcherId: activePitcher.id,
+          outcome: 'strike',
+          strikeDetail: 'called',
+          pitchType: selectedPitchType,
+          location: strikeSourceLocation,
+          recordedBy: currentCoach.id,
+        });
+
+        setAutoLogNotice(
+          `Pitch #${sessionPitches.length + 1} logged as Strike • Next pitch location set`,
+        );
+      }
+
+      // Close the strike sub-detail modal
+      setPendingStrike(false);
+      setStrikeSourceLocation(null);
+
+      // Assume the new location is the next pitch
+      setPendingLocation(newLocation);
+
+      setTimeout(() => {
+        isAutoLoggingRef.current = false;
+      }, 150);
+      return;
+    }
+
+    setPendingLocation(newLocation);
+  };
 
   const handleRecord = (
     outcome: PitchOutcome,
@@ -108,29 +191,43 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
       eventId: event.id,
       pitcherId: activePitcher.id,
       outcome,
-      pitchType,
+      pitchType: pitchType || selectedPitchType,
       strikeDetail,
       inPlayDetail,
       location: pendingLocation,
       recordedBy: currentCoach.id,
     });
 
-    // Reset location after recording pitch
+    // Reset location and pending strike state after recording pitch
     setPendingLocation(null);
+    setPendingStrike(false);
+    setStrikeSourceLocation(null);
   };
 
   // If no active session or user wants to pick/switch pitcher:
   if (!activeSession || !activePitcher || showPitcherPicker) {
     return (
       <div id="pitcher-picker-screen" className="w-full max-w-2xl mx-auto px-4 py-6 space-y-6">
-        <button
-          type="button"
-          onClick={onBackToTeam}
-          className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 transition"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>Exit Live Tracking</span>
-        </button>
+        <div className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onBackToTeam}
+            className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 transition"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Exit Live Tracking</span>
+          </button>
+
+          <button
+            type="button"
+            id="picker-end-event-btn"
+            onClick={() => setShowEndEventConfirm(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition active:scale-95"
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 text-rose-600" />
+            <span>End Entire Event</span>
+          </button>
+        </div>
 
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
           <div>
@@ -310,15 +407,7 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
                             <button
                               type="button"
                               id={`delete-session-${session.id}`}
-                              onClick={() => {
-                                if (
-                                  confirm(
-                                    `Permanently delete ${pitcher?.name || 'this pitcher'}'s session and its recorded pitches?`,
-                                  )
-                                ) {
-                                  onDeleteSession(session.id);
-                                }
-                              }}
+                              onClick={() => setSessionToDelete(session)}
                               className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
                               title="Delete session"
                             >
@@ -331,6 +420,98 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Delete Session Confirmation Modal (Picker Screen) */}
+        {sessionToDelete && onDeleteSession && (
+          <div
+            id="confirm-delete-session-modal"
+            className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+          >
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold text-white truncate">Delete Pitcher Session?</h3>
+                  <p className="text-xs text-slate-400">Permanently remove this session and all pitch logs</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-300 leading-relaxed">
+                This action cannot be undone. All pitches recorded during this session will be removed from event stats.
+              </p>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  id="cancel-delete-session-btn"
+                  onClick={() => setSessionToDelete(null)}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  id="confirm-delete-session-btn"
+                  onClick={() => {
+                    onDeleteSession(sessionToDelete.id);
+                    setSessionToDelete(null);
+                  }}
+                  className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-500 text-white shadow-xs transition"
+                >
+                  Delete Session
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* End Entire Event Confirmation Modal (Picker Screen) */}
+        {showEndEventConfirm && (
+          <div
+            id="confirm-end-event-modal"
+            className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+          >
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold text-white truncate">End Entire Event?</h3>
+                  <p className="text-xs text-slate-400 truncate">{event.name} ({event.type === 'game' ? 'Game' : 'Bullpen'})</p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-300 leading-relaxed">
+                This wraps up tracking for all pitchers and brings you directly to the comprehensive post-event review, pitch count reports, and rest recommendations.
+              </p>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  id="cancel-end-event-btn"
+                  onClick={() => setShowEndEventConfirm(false)}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  id="confirm-end-event-btn"
+                  onClick={() => {
+                    setShowEndEventConfirm(false);
+                    onEndEvent(event.id);
+                  }}
+                  className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-500 text-white shadow-xs transition"
+                >
+                  End Entire Event
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -357,25 +538,12 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
         firstPitchTotal={gameMetrics.firstPitchTotal}
         onUpdateOuts={onUpdateOuts}
         onEndInning={onEndInning}
-        onEndSession={() => {
-          if (confirm(`End session for ${activePitcher.name}? Pitch data will remain saved.`)) {
-            onEndSession(activeSession.id);
-            setShowPitcherPicker(true);
-          }
-        }}
-        onEndEvent={() => {
-          if (
-            confirm(
-              'End the entire event? This will complete all pitching sessions and take you to the event summary.',
-            )
-          ) {
-            onEndEvent(event.id);
-          }
-        }}
+        onEndSession={() => setShowEndSessionConfirm(true)}
+        onEndEvent={() => setShowEndEventConfirm(true)}
       />
 
       {/* Main Recording Workspace */}
-      <main className="max-w-4xl mx-auto px-3 sm:px-4 py-4 space-y-5">
+      <main className="max-w-4xl mx-auto px-2 sm:px-4 py-2 sm:py-4 space-y-3 sm:space-y-5">
         {/* Quick Pitcher Switch Strip */}
         <div className="flex items-center justify-between text-xs text-slate-500 px-1">
           <div className="flex items-center gap-1.5">
@@ -383,6 +551,16 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
             <span className="font-semibold text-slate-700">Live Recording</span>
             <span>•</span>
             <span className="capitalize">{event.type} Mode</span>
+            <button
+              type="button"
+              id="fast-entry-info-top-btn"
+              onClick={() => setShowFastEntryModal(true)}
+              className="p-1 rounded-full text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition"
+              title="Flagship Fast Entry Guide"
+              aria-label="Flagship Fast Entry Guide"
+            >
+              <Info className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           <button
@@ -395,45 +573,69 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
           </button>
         </div>
 
-        {/* Live Pitch Location & Outcome Entry Panel (Phone-Optimized Layout) */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
-          <div className="flex flex-col lg:flex-row items-center lg:items-start justify-center gap-6">
+        {/* Live Pitch Location & Outcome Entry Panel (Phone-Optimized Single Screen Layout) */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 sm:p-5">
+          <div className="flex flex-col lg:flex-row items-center lg:items-start justify-center gap-3 lg:gap-6">
             {/* Strike Zone Interactive Grid (Touch and Drag with Magnified Loupe) */}
             <div className="flex flex-col items-center">
               <StrikeZoneGrid
                 location={pendingLocation}
-                onChange={setPendingLocation}
-                size={300}
+                onChange={handleLocationChange}
+                size={isMobile ? 240 : 300}
               />
             </div>
 
             {/* Fast Pitch Outcome Selector Buttons */}
-            <div className="w-full max-w-sm flex flex-col justify-between self-stretch space-y-4">
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs text-slate-600">
-                <div className="font-bold text-slate-800 mb-1 flex items-center gap-1">
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Flagship Fast Entry</span>
-                </div>
-                Touch/drag on the grid for pitch location (with magnifying loupe), or tap any
-                outcome button directly to record!
-              </div>
-
+            <div className="w-full max-w-sm flex flex-col justify-between self-stretch space-y-2 sm:space-y-4">
               {/* Outcome Selector */}
-              <div className="pt-1">
-                <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                  Select Pitch Result
+              <div className="pt-0.5">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Select Pitch Result
+                  </div>
+                  <button
+                    type="button"
+                    id="fast-entry-info-badge-btn"
+                    onClick={() => setShowFastEntryModal(true)}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-emerald-700 bg-slate-100 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 px-2 py-0.5 rounded-full transition active:scale-95"
+                    title="Flagship Fast Entry guide"
+                  >
+                    <Info className="w-3 h-3 text-emerald-600" />
+                    <span>Fast Entry</span>
+                  </button>
                 </div>
                 <PitchOutcomeSelector
                   eventType={event.type}
                   currentLocation={pendingLocation}
                   onRecordPitch={handleRecord}
+                  pendingStrike={pendingStrike}
+                  onPendingStrikeChange={handlePendingStrikeChange}
+                  selectedPitchType={selectedPitchType}
+                  onPitchTypeChange={setSelectedPitchType}
                 />
               </div>
 
-              {/* Status Hint */}
-              <div className="text-[11px] text-slate-400 text-center">
-                Location is optional &bull; Resets automatically after each pitch
-              </div>
+              {/* Status Hint & Auto-Log Feedback */}
+              {autoLogNotice ? (
+                <div
+                  id="auto-log-strike-notice"
+                  className="text-xs font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 rounded-xl py-1.5 px-3 text-center flex items-center justify-center gap-2 shadow-xs animate-in fade-in"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{autoLogNotice}</span>
+                </div>
+              ) : (
+                <div className="text-[11px] text-slate-400 text-center transition-colors">
+                  {pendingStrike && strikeSourceLocation ? (
+                    <span className="text-emerald-600 font-semibold flex items-center justify-center gap-1">
+                      <Sparkles className="w-3 h-3 text-emerald-500" />
+                      <span>Tap new location on grid to auto-log strike &amp; start next pitch</span>
+                    </span>
+                  ) : (
+                    <span>Location is optional &bull; Resets automatically after each pitch</span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -454,6 +656,175 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
           onDeletePitch={onDeletePitch}
         />
       </main>
+
+      {/* End Pitcher Session Confirmation Modal */}
+      {showEndSessionConfirm && activePitcher && activeSession && (
+        <div
+          id="confirm-end-session-modal"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                <LogOut className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-white truncate">End Pitcher's Session?</h3>
+                <p className="text-xs text-slate-400 truncate">{activePitcher.name} &bull; {currentPitchCount} pitches recorded</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              All pitch counts, velocities, and location plots are permanently saved. You will return to select another pitcher or view event totals.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                id="cancel-end-session-btn"
+                onClick={() => setShowEndSessionConfirm(false)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="confirm-end-session-btn"
+                onClick={() => {
+                  setShowEndSessionConfirm(false);
+                  onEndSession(activeSession.id);
+                  setShowPitcherPicker(true);
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-white shadow-xs transition"
+              >
+                End Session
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* End Entire Event Confirmation Modal */}
+      {showEndEventConfirm && (
+        <div
+          id="confirm-end-event-modal"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-white truncate">End Entire Event?</h3>
+                <p className="text-xs text-slate-400 truncate">{event.name} ({event.type === 'game' ? 'Game' : 'Bullpen'})</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              This wraps up tracking for all pitchers and brings you directly to the comprehensive post-event review, pitch count reports, and rest recommendations.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                id="cancel-end-event-btn"
+                onClick={() => setShowEndEventConfirm(false)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="confirm-end-event-btn"
+                onClick={() => {
+                  setShowEndEventConfirm(false);
+                  onEndEvent(event.id);
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-500 text-white shadow-xs transition"
+              >
+                End Entire Event
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Flagship Fast Entry Info Modal */}
+      {showFastEntryModal && (
+        <div
+          id="fast-entry-info-modal"
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setShowFastEntryModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full p-5 space-y-4 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-xs">
+                  <Sparkles className="w-4.5 h-4.5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 text-base">Flagship Fast Entry</h3>
+                  <p className="text-xs text-slate-500">Quick guide for mobile pitch tracking</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                id="close-fast-entry-modal-btn"
+                onClick={() => setShowFastEntryModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                aria-label="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600 space-y-3 leading-relaxed">
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 text-slate-700 font-medium">
+                Touch/drag on the grid for pitch location (with magnifying loupe), or tap any
+                outcome button directly to record!
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <div className="flex items-start gap-2.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                  <div>
+                    <span className="font-semibold text-slate-800">Magnifying Loupe:</span> When dragging on the strike zone, a magnified sight appears above your finger so your fingertip never obscures your targeting.
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                  <div>
+                    <span className="font-semibold text-slate-800">Fast Strike Auto-Log:</span> Tap Strike, then tap anywhere on the grid to immediately save the pitch and queue the next pitch location in one motion.
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                  <div>
+                    <span className="font-semibold text-slate-800">Direct Outcome Logging:</span> Location is always optional. Tap BALL, STRIKE, FOUL, or IN-PLAY directly for lightning-fast tracking.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-1">
+              <button
+                type="button"
+                id="dismiss-fast-entry-modal-btn"
+                onClick={() => setShowFastEntryModal(false)}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white font-semibold text-xs shadow transition active:scale-[0.99]"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

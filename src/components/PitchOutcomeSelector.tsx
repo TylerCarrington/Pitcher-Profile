@@ -20,6 +20,10 @@ interface PitchOutcomeSelectorProps {
     pitchType?: PitchType,
   ) => void;
   isSubmitting?: boolean;
+  pendingStrike?: boolean;
+  onPendingStrikeChange?: (isPending: boolean) => void;
+  selectedPitchType?: PitchType;
+  onPitchTypeChange?: (pitchType: PitchType) => void;
 }
 
 export const PitchOutcomeSelector: React.FC<PitchOutcomeSelectorProps> = ({
@@ -27,10 +31,27 @@ export const PitchOutcomeSelector: React.FC<PitchOutcomeSelectorProps> = ({
   currentLocation,
   onRecordPitch,
   isSubmitting = false,
+  pendingStrike: controlledPendingStrike,
+  onPendingStrikeChange,
+  selectedPitchType: controlledPitchType,
+  onPitchTypeChange,
 }) => {
-  const [selectedPitchType, setSelectedPitchType] = useState<PitchType>('fastball');
-  const [pendingStrike, setPendingStrike] = useState(false);
+  const [internalPitchType, setInternalPitchType] = useState<PitchType>('fastball');
+  const [internalPendingStrike, setInternalPendingStrike] = useState(false);
   const [pendingInPlay, setPendingInPlay] = useState(false);
+
+  const selectedPitchType = controlledPitchType ?? internalPitchType;
+  const pendingStrike = controlledPendingStrike ?? internalPendingStrike;
+
+  const setPendingStrike = (val: boolean) => {
+    setInternalPendingStrike(val);
+    onPendingStrikeChange?.(val);
+  };
+
+  const setSelectedPitchType = (val: PitchType) => {
+    setInternalPitchType(val);
+    onPitchTypeChange?.(val);
+  };
 
   const handleRecord = (
     outcome: PitchOutcome,
@@ -72,17 +93,17 @@ export const PitchOutcomeSelector: React.FC<PitchOutcomeSelectorProps> = ({
           })}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
           {/* BALL BUTTON */}
           <button
             type="button"
             id="record-ball-btn"
             disabled={isSubmitting}
             onClick={() => handleRecord('ball')}
-            className="h-16 sm:h-20 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-black text-xl sm:text-2xl shadow-lg hover:shadow-amber-500/25 active:scale-95 transition-all flex flex-col items-center justify-center border-b-4 border-amber-600"
+            className="h-14 sm:h-20 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-black text-xl sm:text-2xl shadow-md hover:shadow-amber-500/25 active:scale-95 transition-all flex flex-col items-center justify-center border-b-4 border-amber-600"
           >
             <span>BALL</span>
-            <span className="text-[11px] font-semibold text-amber-950/70 tracking-normal">
+            <span className="text-[10px] sm:text-[11px] font-semibold text-amber-950/70 tracking-normal">
               {currentLocation ? 'Log with location' : 'Fast tap'}
             </span>
           </button>
@@ -93,10 +114,10 @@ export const PitchOutcomeSelector: React.FC<PitchOutcomeSelectorProps> = ({
             id="record-strike-btn"
             disabled={isSubmitting}
             onClick={() => handleRecord('strike', 'called')}
-            className="h-16 sm:h-20 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-black text-xl sm:text-2xl shadow-lg hover:shadow-emerald-600/25 active:scale-95 transition-all flex flex-col items-center justify-center border-b-4 border-emerald-700"
+            className="h-14 sm:h-20 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-black text-xl sm:text-2xl shadow-md hover:shadow-emerald-600/25 active:scale-95 transition-all flex flex-col items-center justify-center border-b-4 border-emerald-700"
           >
             <span>STRIKE</span>
-            <span className="text-[11px] font-semibold text-emerald-100/80 tracking-normal">
+            <span className="text-[10px] sm:text-[11px] font-semibold text-emerald-100/80 tracking-normal">
               {currentLocation ? 'Log with location' : 'Fast tap'}
             </span>
           </button>
@@ -107,9 +128,9 @@ export const PitchOutcomeSelector: React.FC<PitchOutcomeSelectorProps> = ({
 
   // Game Mode: Ball, Strike (with sub-options), Foul, In-Play (with sub-options)
   return (
-    <div id="game-outcome-selector" className="w-full max-w-md mx-auto space-y-3">
+    <div id="game-outcome-selector" className="w-full max-w-md mx-auto space-y-2 sm:space-y-3">
       {/* Quick Pitch Type Selector Strip */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+      <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
         <span className="text-[10px] uppercase font-bold text-slate-400 shrink-0">Arsenal:</span>
         {pitchTypesList.map((type) => {
           const cfg = PITCH_TYPES_CONFIG[type] || PITCH_TYPES_CONFIG.fastball;
@@ -120,7 +141,7 @@ export const PitchOutcomeSelector: React.FC<PitchOutcomeSelectorProps> = ({
               type="button"
               id={`select-pitchtype-${type}`}
               onClick={() => setSelectedPitchType(type)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 border shrink-0 ${
+              className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 border shrink-0 ${
                 isSelected
                   ? 'bg-slate-900 text-white border-slate-900 shadow-xs ring-2 ring-emerald-500/40'
                   : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
@@ -195,17 +216,20 @@ export const PitchOutcomeSelector: React.FC<PitchOutcomeSelectorProps> = ({
             </button>
           </div>
 
-          <div className="mt-3 text-right">
+          <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between gap-2 text-xs">
+            <span className="text-[11px] text-emerald-400 font-medium">
+              💡 Tap grid again to auto-log strike &amp; set next pitch
+            </span>
             <button
               type="button"
               id="quick-strike-btn"
               onClick={() => {
                 setPendingStrike(false);
-                handleRecord('strike');
+                handleRecord('strike', 'called');
               }}
-              className="text-xs text-slate-400 hover:text-slate-200 underline"
+              className="text-xs text-slate-400 hover:text-slate-200 underline shrink-0"
             >
-              Skip detail (Generic Strike)
+              Skip detail
             </button>
           </div>
         </div>
@@ -302,14 +326,14 @@ export const PitchOutcomeSelector: React.FC<PitchOutcomeSelectorProps> = ({
 
       {/* Primary 4-Button Grid for Live Game */}
       {!pendingStrike && !pendingInPlay && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
           {/* BALL */}
           <button
             type="button"
             id="game-record-ball-btn"
             disabled={isSubmitting}
             onClick={() => handleRecord('ball')}
-            className="h-16 sm:h-20 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-black text-xl sm:text-2xl shadow-md hover:shadow-amber-500/20 active:scale-95 transition-all flex flex-col items-center justify-center border-b-4 border-amber-600"
+            className="h-14 sm:h-20 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-black text-xl sm:text-2xl shadow-md hover:shadow-amber-500/20 active:scale-95 transition-all flex flex-col items-center justify-center border-b-4 border-amber-600"
           >
             <span>BALL</span>
             <span className="text-[10px] font-semibold text-amber-950/70">Ball 1-4</span>
@@ -321,7 +345,7 @@ export const PitchOutcomeSelector: React.FC<PitchOutcomeSelectorProps> = ({
             id="game-record-strike-btn"
             disabled={isSubmitting}
             onClick={() => setPendingStrike(true)}
-            className="h-16 sm:h-20 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-black text-xl sm:text-2xl shadow-md hover:shadow-emerald-600/20 active:scale-95 transition-all flex flex-col items-center justify-center border-b-4 border-emerald-700"
+            className="h-14 sm:h-20 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-black text-xl sm:text-2xl shadow-md hover:shadow-emerald-600/20 active:scale-95 transition-all flex flex-col items-center justify-center border-b-4 border-emerald-700"
           >
             <span>STRIKE</span>
             <span className="text-[10px] font-semibold text-emerald-100/80">
@@ -335,7 +359,7 @@ export const PitchOutcomeSelector: React.FC<PitchOutcomeSelectorProps> = ({
             id="game-record-foul-btn"
             disabled={isSubmitting}
             onClick={() => handleRecord('foul')}
-            className="h-14 sm:h-16 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-slate-100 font-bold text-lg sm:text-xl shadow border border-slate-700 active:scale-95 transition-all flex flex-col items-center justify-center"
+            className="h-12 sm:h-16 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-slate-100 font-bold text-base sm:text-xl shadow border border-slate-700 active:scale-95 transition-all flex flex-col items-center justify-center"
           >
             <span>FOUL</span>
             <span className="text-[10px] text-slate-400 font-normal">Foul Ball</span>
@@ -347,7 +371,7 @@ export const PitchOutcomeSelector: React.FC<PitchOutcomeSelectorProps> = ({
             id="game-record-inplay-btn"
             disabled={isSubmitting}
             onClick={() => setPendingInPlay(true)}
-            className="h-14 sm:h-16 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold text-lg sm:text-xl shadow-md active:scale-95 transition-all flex flex-col items-center justify-center border-b-4 border-indigo-800"
+            className="h-12 sm:h-16 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold text-base sm:text-xl shadow-md active:scale-95 transition-all flex flex-col items-center justify-center border-b-4 border-indigo-800"
           >
             <span>IN-PLAY</span>
             <span className="text-[10px] text-indigo-200">Out / Hit / Err / HBP &rsaquo;</span>

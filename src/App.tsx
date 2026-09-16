@@ -64,6 +64,7 @@ import { CoachSwitcher } from './components/CoachSwitcher';
 import { TeamSwitcher } from './components/TeamSwitcher';
 import { GoogleSignInScreen } from './components/GoogleSignInScreen';
 import { PostSignInScreen } from './components/PostSignInScreen';
+import pitchLogo from './assets/pitch.png';
 import { Activity, Users, Calendar, ArrowLeft, Plus, Link } from 'lucide-react';
 
 export default function App() {
@@ -468,7 +469,7 @@ export default function App() {
           {/* Brand Identity */}
           <div className="flex items-center gap-2.5">
             <img
-              src="/assets/pitch.png"
+              src={pitchLogo}
               alt="Pitch Tracker"
               referrerPolicy="no-referrer"
               className="w-8 h-8 rounded-lg object-cover shadow-sm border border-emerald-500/30 shrink-0"

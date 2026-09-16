@@ -1,12 +1,12 @@
 {
-  "projectId": "modular-limiter-h5fd2",
-  "appId": "1:406971331933:web:3d129e946e82fe7ead24b4",
-  "apiKey": "AIzaSyDNIs_OGAXniVOJcZorFW3NASws8TUuQ58",
-  "authDomain": "modular-limiter-h5fd2.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-pitchtrackercoac-23a76227-eaa5-492c-aa31-df0158bcd989",
-  "storageBucket": "modular-limiter-h5fd2.firebasestorage.app",
-  "messagingSenderId": "406971331933",
-  "measurementId": "",
-  "oAuthClientId": "406971331933-lfosshr4kh72t2d1ed5hs16q0ac1qlsn.apps.googleusercontent.com",
+  "projectId": "pitcher-profile",
+  "appId": "1:643325237857:web:fea80e90f46470d85b6820",
+  "apiKey": "AIzaSyDVJ-Vf-jWRQZX1KV-DT8fd_9u_MQEvUl8",
+  "authDomain": "pitcher-profile.firebaseapp.com",
+  "firestoreDatabaseId": "",
+  "storageBucket": "pitcher-profile.firebasestorage.app",
+  "messagingSenderId": "643325237857",
+  "measurementId": "G-TM2C0RRKHR",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }

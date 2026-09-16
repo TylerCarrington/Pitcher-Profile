@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Coach, PitchRulePresetId } from '../types';
+import pitchLogo from '../assets/pitch.png';
 import {
   Plus,
   Link,
@@ -72,7 +73,7 @@ export const PostSignInScreen: React.FC<PostSignInScreenProps> = ({
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <img
-              src="/assets/pitch.png"
+              src={pitchLogo}
               alt="Pitch Tracker App Icon"
               referrerPolicy="no-referrer"
               className="w-9 h-9 rounded-xl object-cover shadow-lg border border-emerald-500/30"

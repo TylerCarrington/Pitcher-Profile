@@ -5,10 +5,12 @@ import {
   getAllSessions,
   getEventsForTeam,
   getAllCoaches,
+  savePlayer,
 } from '../storage';
 import { calculatePitchSmartStatus, calculatePlayerRestEligibility, PITCH_TYPES_CONFIG } from '../utils/pitchSmart';
 import { PitchSmartBadge } from './PitchSmartBadge';
 import { StrikeZoneHeatmap } from './StrikeZoneHeatmap';
+import { ImageUploadInput } from './ImageUploadInput';
 import {
   X,
   Target,
@@ -22,6 +24,8 @@ import {
   FileText,
   Filter,
   CheckCircle2,
+  Camera,
+  Edit2,
 } from 'lucide-react';
 
 interface PitcherProfileModalProps {
@@ -32,13 +36,16 @@ interface PitcherProfileModalProps {
 }
 
 export const PitcherProfileModal: React.FC<PitcherProfileModalProps> = ({
-  player,
+  player: initialPlayer,
   team,
   onClose,
   onEditPlayer,
 }) => {
+  const [player, setPlayer] = useState<Player>(initialPlayer);
   const [activeTab, setActiveTab] = useState<'overview' | 'heatmap' | 'sessions'>('overview');
   const [filterEventType, setFilterEventType] = useState<'all' | 'game' | 'bullpen'>('all');
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [photoDraft, setPhotoDraft] = useState(initialPlayer.imageUrl || '');
 
   // Load all pitcher data
   const pitches = useMemo(() => getPitchesForPlayer(player.id), [player.id]);
@@ -169,7 +176,7 @@ export const PitcherProfileModal: React.FC<PitcherProfileModalProps> = ({
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="relative">
+              <div className="relative group/avatar shrink-0">
                 {player.imageUrl ? (
                   <img
                     src={player.imageUrl}
@@ -184,6 +191,17 @@ export const PitcherProfileModal: React.FC<PitcherProfileModalProps> = ({
                 <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 font-black text-xs px-1.5 py-0.5 rounded-full border border-slate-900">
                   #{player.jerseyNumber}
                 </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhotoDraft(player.imageUrl || '');
+                    setShowPhotoModal(true);
+                  }}
+                  title="Upload / Change player photo"
+                  className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition text-white"
+                >
+                  <Camera className="w-5 h-5" />
+                </button>
               </div>
 
               <div>
@@ -193,11 +211,22 @@ export const PitcherProfileModal: React.FC<PitcherProfileModalProps> = ({
                     {player.throws || 'R'}HP
                   </span>
                 </div>
-                <p className="text-xs text-slate-400 mt-1 flex items-center gap-2">
+                <div className="text-xs text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
                   <span>{team.name}</span>
                   <span>&bull;</span>
                   <span className="text-emerald-400 font-semibold">{seasonAge}U Season Age</span>
-                </p>
+                  <span>&bull;</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPhotoDraft(player.imageUrl || '');
+                      setShowPhotoModal(true);
+                    }}
+                    className="text-[11px] text-emerald-400 hover:text-emerald-300 underline font-medium"
+                  >
+                    {player.imageUrl ? 'Change Photo' : 'Add Photo'}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -626,6 +655,17 @@ export const PitcherProfileModal: React.FC<PitcherProfileModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setPhotoDraft(player.imageUrl || '');
+                setShowPhotoModal(true);
+              }}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 transition flex items-center gap-1.5"
+            >
+              <Camera className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Update Photo</span>
+            </button>
             {onEditPlayer && (
               <button
                 type="button"
@@ -648,6 +688,79 @@ export const PitcherProfileModal: React.FC<PitcherProfileModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Quick Photo Upload Modal */}
+      {showPhotoModal && (
+        <div
+          id="pitcher-photo-modal"
+          className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowPhotoModal(false);
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <Camera className="w-4 h-4 text-emerald-600" />
+                <h3 className="font-bold text-slate-900 text-sm">
+                  Update Photo: {player.name}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPhotoModal(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <ImageUploadInput
+                label="Player Headshot"
+                value={photoDraft}
+                onChange={setPhotoDraft}
+                shape="circle"
+                helperText="Upload or drag-and-drop a photo from your phone or device."
+              />
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowPhotoModal(false)}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const updated = savePlayer({
+                      id: player.id,
+                      teamId: player.teamId,
+                      name: player.name,
+                      jerseyNumber: player.jerseyNumber,
+                      seasonAge: player.seasonAge,
+                      imageUrl: photoDraft.trim() || undefined,
+                      throws: player.throws,
+                      bats: player.bats,
+                    });
+                    setPlayer(updated);
+                    setShowPhotoModal(false);
+                  }}
+                  className="px-4 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                >
+                  Save Photo
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -13,6 +13,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { PITCH_RULE_PRESETS } from '../utils/pitchSmart';
+import { ImageUploadInput } from './ImageUploadInput';
 
 interface PostSignInScreenProps {
   currentCoach: Coach;
@@ -263,18 +264,14 @@ export const PostSignInScreen: React.FC<PostSignInScreenProps> = ({
                 </p>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                  Team Logo URL (Optional)
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://example.com/logo.png"
-                  value={teamImage}
-                  onChange={(e) => setTeamImage(e.target.value)}
-                  className="w-full text-sm px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500"
-                />
-              </div>
+              <ImageUploadInput
+                label="Team Logo / Squad Photo (Optional)"
+                value={teamImage}
+                onChange={setTeamImage}
+                shape="circle"
+                theme="dark"
+                helperText="Upload a logo, mascot, or squad photo from your phone or computer."
+              />
 
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-700/70">
                 <button

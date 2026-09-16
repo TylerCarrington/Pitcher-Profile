@@ -10,6 +10,7 @@ import {
   Users,
 } from 'lucide-react';
 import { PITCH_RULE_PRESETS } from '../utils/pitchSmart';
+import { ImageUploadInput } from './ImageUploadInput';
 
 interface TeamSwitcherProps {
   teams: Team[];
@@ -103,10 +104,10 @@ export const TeamSwitcher: React.FC<TeamSwitcherProps> = ({
           <img
             src={selectedTeam.imageUrl}
             alt={selectedTeam.name}
-            className="w-5 h-5 rounded-md object-cover border border-slate-600 shrink-0"
+            className="w-5 h-5 rounded-full object-cover border border-slate-600 shrink-0"
           />
         ) : (
-          <div className="w-5 h-5 rounded-md bg-emerald-500 text-slate-950 font-black text-[10px] flex items-center justify-center shrink-0">
+          <div className="w-5 h-5 rounded-full bg-emerald-500 text-slate-950 font-black text-[10px] flex items-center justify-center shrink-0">
             {selectedTeam ? selectedTeam.name.substring(0, 2).toUpperCase() : 'TM'}
           </div>
         )}
@@ -168,10 +169,10 @@ export const TeamSwitcher: React.FC<TeamSwitcherProps> = ({
                         <img
                           src={team.imageUrl}
                           alt={team.name}
-                          className="w-7 h-7 rounded-lg object-cover border border-slate-200 shrink-0"
+                          className="w-7 h-7 rounded-full object-cover border border-slate-200 shrink-0"
                         />
                       ) : (
-                        <div className="w-7 h-7 rounded-lg bg-slate-900 text-emerald-400 font-black text-xs flex items-center justify-center shrink-0">
+                        <div className="w-7 h-7 rounded-full bg-slate-900 text-emerald-400 font-black text-xs flex items-center justify-center shrink-0">
                           {team.name.substring(0, 2).toUpperCase()}
                         </div>
                       )}
@@ -285,18 +286,13 @@ export const TeamSwitcher: React.FC<TeamSwitcherProps> = ({
                 </p>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Team Logo URL (Optional)
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://example.com/logo.png"
-                  value={newTeamImage}
-                  onChange={(e) => setNewTeamImage(e.target.value)}
-                  className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-                />
-              </div>
+              <ImageUploadInput
+                label="Team Logo / Squad Photo (Optional)"
+                value={newTeamImage}
+                onChange={setNewTeamImage}
+                shape="circle"
+                helperText="Upload a logo, emblem, or squad photo from your phone or computer."
+              />
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button

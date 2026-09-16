@@ -19,8 +19,10 @@ import {
   CheckCircle2,
   Clock,
   Sparkles,
+  Camera,
 } from 'lucide-react';
 import { PitcherProfileModal } from './PitcherProfileModal';
+import { ImageUploadInput } from './ImageUploadInput';
 import {
   PITCH_RULE_PRESETS,
   getPitchRulePreset,
@@ -230,18 +232,45 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
       {selectedTeam && (
         <div id="roster-management-section" className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-5 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-bold text-slate-900">
-                  {selectedTeam.name} Roster
-                </h3>
-                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
-                  {players.length} Players
-                </span>
+            <div className="flex items-center gap-3">
+              {/* Team Photo / Logo Banner Avatar */}
+              <div className="relative group/logo shrink-0">
+                {selectedTeam.imageUrl ? (
+                  <img
+                    src={selectedTeam.imageUrl}
+                    alt={selectedTeam.name}
+                    className="w-12 h-12 rounded-full object-cover border border-slate-200 shadow-xs"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-black text-base flex items-center justify-center shadow-xs">
+                    {selectedTeam.name.substring(0, 2).toUpperCase()}
+                  </div>
+                )}
+                {isSelectedTeamCreator && (
+                  <button
+                    type="button"
+                    onClick={openEditTeamModal}
+                    title="Change team logo / photo"
+                    className="absolute -bottom-1 -right-1 bg-slate-900 hover:bg-emerald-600 text-white p-1 rounded-full shadow-md transition"
+                  >
+                    <Camera className="w-3 h-3" />
+                  </button>
+                )}
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Players can be selected as pitchers during live game and bullpen sessions.
-              </p>
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-slate-900">
+                    {selectedTeam.name} Roster
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+                    {players.length} Players
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Players can be selected as pitchers during live game and bullpen sessions.
+                </p>
+              </div>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
@@ -471,18 +500,13 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Team Logo / Photo URL (Optional)
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://example.com/logo.png"
-                  value={newTeamImage}
-                  onChange={(e) => setNewTeamImage(e.target.value)}
-                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
-                />
-              </div>
+              <ImageUploadInput
+                label="Team Logo / Squad Photo (Optional)"
+                value={newTeamImage}
+                onChange={setNewTeamImage}
+                shape="circle"
+                helperText="Upload a logo, emblem, or squad photo from your phone or computer."
+              />
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -557,18 +581,13 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Team Logo URL (optional)
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://example.com/logo.png"
-                  value={editTeamImage}
-                  onChange={(e) => setEditTeamImage(e.target.value)}
-                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
-                />
-              </div>
+              <ImageUploadInput
+                label="Team Logo / Squad Photo (Optional)"
+                value={editTeamImage}
+                onChange={setEditTeamImage}
+                shape="circle"
+                helperText="Upload or change the team logo or squad photo."
+              />
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -764,18 +783,13 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Photo URL (Optional)
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://example.com/photo.jpg"
-                  value={playerImage}
-                  onChange={(e) => setPlayerImage(e.target.value)}
-                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
-                />
-              </div>
+              <ImageUploadInput
+                label="Pitcher / Player Photo (Optional)"
+                value={playerImage}
+                onChange={setPlayerImage}
+                shape="circle"
+                helperText="Upload a player headshot or action photo from camera or files."
+              />
 
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button

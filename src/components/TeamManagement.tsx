@@ -92,6 +92,13 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     null,
   );
 
+  // Confirmation Modals State (replaces iframe-blocked window.confirm)
+  const [showDeleteTeamModal, setShowDeleteTeamModal] = useState(false);
+  const [playerToDelete, setPlayerToDelete] = useState<Player | null>(null);
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
+  const [coachToRemove, setCoachToRemove] = useState<Coach | null>(null);
+  const [showLeaveTeamConfirm, setShowLeaveTeamConfirm] = useState(false);
+
   // Player modal state
   const [showPlayerModal, setShowPlayerModal] = useState(false);
   const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
@@ -99,7 +106,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   const [playerNumber, setPlayerNumber] = useState('');
   const [playerImage, setPlayerImage] = useState('');
   const [playerThrows, setPlayerThrows] = useState<'R' | 'L'>('R');
-  const [playerSeasonAge, setPlayerSeasonAge] = useState<number>(11);
+  const [playerSeasonAge, setPlayerSeasonAge] = useState<number | ''>('');
 
   // Share link / code copied toast
   const [copiedState, setCopiedState] = useState<{ id: string; type: 'code' | 'link' } | null>(null);
@@ -198,7 +205,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     setPlayerNumber('');
     setPlayerImage('');
     setPlayerThrows('R');
-    setPlayerSeasonAge(11);
+    setPlayerSeasonAge('');
     setShowPlayerModal(true);
   };
 
@@ -208,13 +215,14 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     setPlayerNumber(p.jerseyNumber);
     setPlayerImage(p.imageUrl || '');
     setPlayerThrows(p.throws || 'R');
-    setPlayerSeasonAge(p.seasonAge ?? 11);
+    setPlayerSeasonAge(p.seasonAge ?? '');
     setShowPlayerModal(true);
   };
 
   const handleSavePlayerSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTeam || !playerName.trim() || !playerNumber.trim()) return;
+    const finalAge = typeof playerSeasonAge === 'number' ? playerSeasonAge : (parseInt(String(playerSeasonAge), 10) || 11);
     onSavePlayer({
       id: editingPlayer?.id,
       teamId: selectedTeam.id,
@@ -222,7 +230,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
       jerseyNumber: playerNumber.trim(),
       imageUrl: playerImage.trim() || undefined,
       throws: playerThrows,
-      seasonAge: playerSeasonAge,
+      seasonAge: finalAge,
     });
     setShowPlayerModal(false);
   };
@@ -344,14 +352,14 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                 <span>Add Pitcher / Player</span>
               </button>
 
-              {/* Delete team button: Only creator can delete */}
+              {/* Edit and Delete team buttons: Only team creator can edit or delete */}
               {isSelectedTeamCreator && (
                 <>
                   <button
                     type="button"
                     onClick={openEditTeamModal}
                     className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition flex items-center gap-1"
-                    title="Team Creator Permission: Edit Team"
+                    title="Edit Team"
                   >
                     <Edit2 className="w-3.5 h-3.5 text-emerald-500" />
                     <span className="hidden sm:inline">Edit Team</span>
@@ -359,17 +367,9 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   <button
                     type="button"
                     id="delete-team-btn"
-                    onClick={() => {
-                      if (
-                        confirm(
-                          `Are you sure you want to delete "${selectedTeam.name}" and all its events? This cannot be undone.`,
-                        )
-                      ) {
-                        onDeleteTeam(selectedTeam.id);
-                      }
-                    }}
+                    onClick={() => setShowDeleteTeamModal(true)}
                     className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1"
-                    title="Team Creator Permission: Delete Team"
+                    title="Delete Team"
                   >
                     <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                     <span className="hidden sm:inline">Delete Team</span>
@@ -382,8 +382,23 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
           {/* Player Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
             {players.length === 0 ? (
-              <div className="col-span-full py-8 text-center text-slate-400 text-sm">
-                No players on this roster yet. Click "Add Pitcher / Player" to get started.
+              <div className="col-span-full py-10 px-4 text-center bg-slate-50 border border-dashed border-slate-300 rounded-2xl flex flex-col items-center justify-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-700 flex items-center justify-center">
+                  <UserPlus className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm">No players on this roster yet</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">Add pitchers and players to manage rest eligibility, scouting reports, and pitch logs.</p>
+                </div>
+                <button
+                  type="button"
+                  id="empty-add-player-btn"
+                  onClick={openAddPlayer}
+                  className="mt-1 px-4 py-2 text-xs font-bold rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-xs transition flex items-center gap-2 cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4 text-emerald-400" />
+                  <span>Add Pitcher / Player</span>
+                </button>
               </div>
             ) : (
               players.map((p) => {
@@ -485,11 +500,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() => {
-                            if (confirm(`Remove ${p.name} (#${p.jerseyNumber}) from roster?`)) {
-                              onDeletePlayer(p.id);
-                            }
-                          }}
+                          onClick={() => setPlayerToDelete(p)}
                           title="Delete player"
                           className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
                         >
@@ -502,6 +513,21 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
               })
             )}
           </div>
+
+          {/* Bottom Add Player Button when players exist */}
+          {players.length > 0 && (
+            <div className="pt-3 flex justify-center sm:justify-end">
+              <button
+                type="button"
+                id="bottom-add-player-btn"
+                onClick={openAddPlayer}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-xs transition flex items-center gap-2 cursor-pointer"
+              >
+                <UserPlus className="w-4 h-4 text-emerald-400" />
+                <span>Add Another Player</span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -534,7 +560,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   placeholder="e.g. Westlake Wildcats 11U"
                   value={newTeamName}
                   onChange={(e) => setNewTeamName(e.target.value)}
-                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 shadow-xs"
                 />
               </div>
 
@@ -615,7 +641,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   placeholder="e.g. Westlake Wildcats 11U"
                   value={editTeamName}
                   onChange={(e) => setEditTeamName(e.target.value)}
-                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 shadow-xs"
                 />
               </div>
 
@@ -702,7 +728,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   placeholder="e.g. HAWKS-2026 or paste invite URL"
                   value={joinCodeInput}
                   onChange={(e) => setJoinCodeInput(e.target.value)}
-                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 uppercase font-mono"
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 uppercase font-mono shadow-xs"
                 />
               </div>
 
@@ -775,7 +801,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   placeholder="e.g. Liam Parker"
                   value={playerName}
                   onChange={(e) => setPlayerName(e.target.value)}
-                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500"
+                  className="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 shadow-xs"
                 />
               </div>
 
@@ -790,7 +816,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     placeholder="e.g. 11"
                     value={playerNumber}
                     onChange={(e) => setPlayerNumber(e.target.value)}
-                    className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 font-mono"
+                    className="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 font-mono shadow-xs"
                   />
                 </div>
 
@@ -801,7 +827,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   <select
                     value={playerThrows}
                     onChange={(e) => setPlayerThrows(e.target.value as 'R' | 'L')}
-                    className="w-full text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 bg-white"
+                    className="w-full text-sm px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 shadow-xs"
                   >
                     <option value="R">Right (RHP)</option>
                     <option value="L">Left (LHP)</option>
@@ -818,13 +844,22 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     type="number"
                     min={6}
                     max={19}
+                    placeholder="e.g. 9"
                     required
                     value={playerSeasonAge}
-                    onChange={(e) => setPlayerSeasonAge(parseInt(e.target.value, 10) || 11)}
-                    className="w-24 text-sm px-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 font-mono"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '') {
+                        setPlayerSeasonAge('');
+                      } else {
+                        const num = parseInt(val, 10);
+                        setPlayerSeasonAge(isNaN(num) ? '' : num);
+                      }
+                    }}
+                    className="w-24 text-sm px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 font-mono shadow-xs"
                   />
                   <span className="text-xs text-slate-500 font-medium">
-                    {playerSeasonAge}U Bracket (used for Pitch Count limits)
+                    {playerSeasonAge !== '' ? `${playerSeasonAge}U Bracket (used for Pitch Count limits)` : 'Select League Age (e.g. 9U, 11U)'}
                   </span>
                 </div>
               </div>
@@ -978,15 +1013,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                   <button
                     type="button"
                     id="regenerate-invite-btn"
-                    onClick={() => {
-                      if (
-                        confirm(
-                          'Revoke current invite link & code? Anyone with the old link or code will no longer be able to join.',
-                        )
-                      ) {
-                        onRegenerateInviteLink(selectedTeam.id);
-                      }
-                    }}
+                    onClick={() => setShowRegenerateConfirm(true)}
                     className="text-xs text-amber-600 hover:text-amber-700 font-semibold underline"
                   >
                     Regenerate Code (Revoke Old)
@@ -1056,11 +1083,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                           <button
                             type="button"
                             id={`remove-coach-${coach.id}`}
-                            onClick={() => {
-                              if (confirm(`Remove ${coach.name} from ${selectedTeam.name}?`)) {
-                                onRemoveCoach(selectedTeam.id, coach.id);
-                              }
-                            }}
+                            onClick={() => setCoachToRemove(coach)}
                             className="px-2 py-1 text-[11px] font-semibold rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition"
                           >
                             Remove
@@ -1072,12 +1095,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                           <button
                             type="button"
                             id="leave-team-btn"
-                            onClick={() => {
-                              if (confirm(`Leave team ${selectedTeam.name}?`)) {
-                                onLeaveTeam(selectedTeam.id);
-                                setShowCoachesModal(false);
-                              }
-                            }}
+                            onClick={() => setShowLeaveTeamConfirm(true)}
                             className="px-2 py-1 text-[11px] font-semibold rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition"
                           >
                             Leave Team
@@ -1240,6 +1258,231 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
           onClose={() => setSelectedPitcherForProfile(null)}
           onEditPlayer={openEditPlayer}
         />
+      )}
+
+      {/* Delete Team Modal */}
+      {showDeleteTeamModal && selectedTeam && (
+        <div
+          id="confirm-delete-team-modal"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-slate-900 truncate">Delete Team "{selectedTeam.name}"?</h3>
+                <p className="text-xs text-slate-500">This action cannot be undone</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to delete <span className="font-bold text-slate-900">{selectedTeam.name}</span> and all its events, bullpens, and pitching records?
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                id="cancel-delete-team-btn"
+                onClick={() => setShowDeleteTeamModal(false)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="confirm-delete-team-btn"
+                onClick={() => {
+                  onDeleteTeam(selectedTeam.id);
+                  setShowDeleteTeamModal(false);
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition"
+              >
+                Delete Team
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Player Modal */}
+      {playerToDelete && (
+        <div
+          id="confirm-delete-player-modal"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-slate-900 truncate">Remove {playerToDelete.name}?</h3>
+                <p className="text-xs text-slate-500">Jersey #{playerToDelete.jerseyNumber}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to remove <span className="font-bold text-slate-900">{playerToDelete.name}</span> from the roster?
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                id="cancel-delete-player-btn"
+                onClick={() => setPlayerToDelete(null)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="confirm-delete-player-btn"
+                onClick={() => {
+                  onDeletePlayer(playerToDelete.id);
+                  setPlayerToDelete(null);
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition"
+              >
+                Remove Player
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Regenerate Invite Code Modal */}
+      {showRegenerateConfirm && selectedTeam && onRegenerateInviteLink && (
+        <div
+          id="confirm-regenerate-code-modal"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-100 border border-amber-200 text-amber-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-slate-900 truncate">Regenerate Invite Code?</h3>
+                <p className="text-xs text-slate-500">Old link will stop working</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Revoke current invite link & code? Anyone trying to join using the old link or code will no longer be able to access the team.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowRegenerateConfirm(false)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onRegenerateInviteLink(selectedTeam.id);
+                  setShowRegenerateConfirm(false);
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-700 text-white shadow-xs transition"
+              >
+                Regenerate Code
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Remove Coach Modal */}
+      {coachToRemove && selectedTeam && onRemoveCoach && (
+        <div
+          id="confirm-remove-coach-modal"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-slate-900 truncate">Remove {coachToRemove.name}?</h3>
+                <p className="text-xs text-slate-500">{coachToRemove.email}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to remove <span className="font-bold text-slate-900">{coachToRemove.name}</span> from <span className="font-bold text-slate-900">{selectedTeam.name}</span>?
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setCoachToRemove(null)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onRemoveCoach(selectedTeam.id, coachToRemove.id);
+                  setCoachToRemove(null);
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition"
+              >
+                Remove Coach
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Leave Team Modal */}
+      {showLeaveTeamConfirm && selectedTeam && onLeaveTeam && (
+        <div
+          id="confirm-leave-team-modal"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-slate-900 truncate">Leave {selectedTeam.name}?</h3>
+                <p className="text-xs text-slate-500">Staff Access</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to leave <span className="font-bold text-slate-900">{selectedTeam.name}</span>? You will need an invite code to rejoin.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowLeaveTeamConfirm(false)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onLeaveTeam(selectedTeam.id);
+                  setShowLeaveTeamConfirm(false);
+                  setShowCoachesModal(false);
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition"
+              >
+                Leave Team
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

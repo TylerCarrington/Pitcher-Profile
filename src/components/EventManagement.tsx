@@ -44,6 +44,8 @@ export const EventManagement: React.FC<EventManagementProps> = ({
   const [eventType, setEventType] = useState<EventType>('game');
   const [opponent, setOpponent] = useState('');
   const [location, setLocation] = useState('');
+  const [eventToDelete, setEventToDelete] = useState<BaseballEvent | null>(null);
+  const [eventToReopen, setEventToReopen] = useState<BaseballEvent | null>(null);
 
   // Default to local datetime
   const now = new Date();
@@ -175,9 +177,7 @@ export const EventManagement: React.FC<EventManagementProps> = ({
                       id={`delete-active-event-${ev.id}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm(`Delete this ${ev.type} event and all associated pitch logs?`)) {
-                          onDeleteEvent(ev.id);
-                        }
+                        setEventToDelete(ev);
                       }}
                       className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
                       title="Delete event"
@@ -263,9 +263,7 @@ export const EventManagement: React.FC<EventManagementProps> = ({
                       id={`reopen-event-btn-${ev.id}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm(`Reopen this event to continue tracking pitches?`)) {
-                          onReopenEvent(ev.id);
-                        }
+                        setEventToReopen(ev);
                       }}
                       className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition flex items-center gap-1"
                       title="Reopen event if accidentally ended"
@@ -281,9 +279,7 @@ export const EventManagement: React.FC<EventManagementProps> = ({
                       id={`delete-ended-event-${ev.id}`}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm(`Permanently delete this event and its pitch logs?`)) {
-                          onDeleteEvent(ev.id);
-                        }
+                        setEventToDelete(ev);
                       }}
                       className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
                       title="Delete event"
@@ -415,6 +411,99 @@ export const EventManagement: React.FC<EventManagementProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Delete Event Modal */}
+      {eventToDelete && onDeleteEvent && (
+        <div
+          id="confirm-delete-event-modal"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-slate-900 truncate">
+                  Delete {eventToDelete.type === 'game' ? `vs ${eventToDelete.opponent || 'Game'}` : 'Bullpen'}?
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {new Date(eventToDelete.scheduledAt).toLocaleDateString()}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Permanently delete this event and all associated pitch logs, sessions, and statistics?
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                id="cancel-delete-event-btn"
+                onClick={() => setEventToDelete(null)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="confirm-delete-event-btn"
+                onClick={() => {
+                  onDeleteEvent(eventToDelete.id);
+                  setEventToDelete(null);
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition"
+              >
+                Delete Event
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reopen Event Modal */}
+      {eventToReopen && onReopenEvent && (
+        <div
+          id="confirm-reopen-event-modal"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 border border-emerald-200 text-emerald-600 flex items-center justify-center shrink-0">
+                <RotateCcw className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-slate-900 truncate">Reopen Event?</h3>
+                <p className="text-xs text-slate-500">Continue pitch tracking</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Reopen this event to resume live pitch tracking and session editing?
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setEventToReopen(null)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onReopenEvent(eventToReopen.id);
+                  setEventToReopen(null);
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition"
+              >
+                Reopen Event
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -39,6 +39,7 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
   onDeleteEvent,
 }) => {
   const [expandedPitcherId, setExpandedPitcherId] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // Group pitches by pitcher
   const pitcherStatsMap = new Map<
@@ -113,11 +114,7 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
             <button
               type="button"
               id="delete-event-review-btn"
-              onClick={() => {
-                if (confirm(`Are you sure you want to permanently delete this event and its pitch records?`)) {
-                  onDeleteEvent();
-                }
-              }}
+              onClick={() => setShowDeleteModal(true)}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 rounded-lg border border-rose-200 transition"
               title="Delete event"
             >
@@ -362,6 +359,54 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
           on any pitcher row to inspect their 9-cell strike zone concentration and pitch arsenal distribution.
         </div>
       </div>
+
+      {/* Delete Event Modal */}
+      {showDeleteModal && onDeleteEvent && (
+        <div
+          id="confirm-delete-event-review-modal"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 border border-rose-200 text-rose-600 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-slate-900 truncate">Delete Event?</h3>
+                <p className="text-xs text-slate-500">
+                  {event.type === 'game' ? `vs ${event.opponent || 'Game'}` : 'Bullpen'} ({new Date(event.scheduledAt).toLocaleDateString()})
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to permanently delete this event and all associated pitch logs and stats?
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                id="cancel-delete-event-review-btn"
+                onClick={() => setShowDeleteModal(false)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="confirm-delete-event-review-btn"
+                onClick={() => {
+                  onDeleteEvent();
+                  setShowDeleteModal(false);
+                }}
+                className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition"
+              >
+                Delete Event
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

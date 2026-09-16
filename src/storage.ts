@@ -18,6 +18,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  deleteDoc,
   collection,
   query,
   where,
@@ -160,6 +161,17 @@ export async function syncSingleTeamToCloud(team: Team, dataOverride?: AppData):
   if (!team || !team.id) return;
   const data = dataOverride || loadData();
   const teamPlayers = data.players.filter((p) => p.teamId === team.id);
+  const playerIds = new Set(teamPlayers.map((p) => p.id));
+  const teamEvents = data.events.filter((e) => e.teamId === team.id);
+  const eventIds = new Set(teamEvents.map((e) => e.id));
+  const teamSessions = data.sessions.filter(
+    (s) => eventIds.has(s.eventId) || playerIds.has(s.pitcherId),
+  );
+  const sessionIds = new Set(teamSessions.map((s) => s.id));
+  const teamPitches = data.pitches.filter(
+    (p) => sessionIds.has(p.sessionId) || eventIds.has(p.eventId) || playerIds.has(p.pitcherId),
+  );
+
   const creator = data.coaches.find((c) => c.id === team.createdBy);
   const cleanCode = team.inviteCode ? extractCleanInviteCode(team.inviteCode) : null;
   const cleanCodeWithoutDash = cleanCode ? cleanCode.replace(/-/g, '') : null;
@@ -177,6 +189,9 @@ export async function syncSingleTeamToCloud(team: Team, dataOverride?: AppData):
     inviteCodeCreatedAt: team.inviteCodeCreatedAt,
     pitchRulePresetId: team.pitchRulePresetId || 'usa_pitch_smart',
     players: teamPlayers,
+    events: teamEvents,
+    sessions: teamSessions,
+    pitches: teamPitches,
     lastUpdated: new Date().toISOString(),
   };
 
@@ -193,10 +208,18 @@ export async function syncSingleTeamToCloud(team: Team, dataOverride?: AppData):
   }
 }
 
-async function syncTeamAndInvitesToFirestore(teams: Team[], players: Player[], coaches: Coach[]) {
+async function syncTeamAndInvitesToFirestore(teams: Team[], players?: Player[], coaches?: Coach[]) {
+  const currentData = loadData();
   for (const team of teams) {
     if (!team || !team.id) continue;
-    await syncSingleTeamToCloud(team, { coaches, teams, players, events: [], sessions: [], pitches: [] });
+    await syncSingleTeamToCloud(team, {
+      coaches: coaches || currentData.coaches,
+      teams: currentData.teams,
+      players: players || currentData.players,
+      events: currentData.events,
+      sessions: currentData.sessions,
+      pitches: currentData.pitches,
+    });
   }
 }
 
@@ -280,6 +303,149 @@ function mergeAppData(local: AppData, remote: any): AppData {
   };
 }
 
+// Active listeners for real-time multi-coach team data syncing
+const activeTeamUnsubscribes = new Map<string, () => void>();
+
+export function syncTeamListeners(teams: Team[]): void {
+  const currentTeamIds = new Set(teams.filter((t) => Boolean(t && t.id)).map((t) => t.id));
+
+  // Clean up listeners for removed teams
+  for (const [teamId, unsub] of activeTeamUnsubscribes.entries()) {
+    if (!currentTeamIds.has(teamId)) {
+      unsub();
+      activeTeamUnsubscribes.delete(teamId);
+    }
+  }
+
+  // Attach listener for each team
+  for (const team of teams) {
+    if (!team || !team.id || activeTeamUnsubscribes.has(team.id)) continue;
+
+    try {
+      const unsub = onSnapshot(
+        doc(db, 'teams', team.id),
+        (snapshot) => {
+          if (!snapshot.exists()) {
+            if (!isPushingToCloud) {
+              const localData = loadData();
+              const teamEvents = localData.events.filter((e) => e.teamId === team.id);
+              const eventIds = new Set(teamEvents.map((e) => e.id));
+
+              localData.teams = localData.teams.filter((t) => t.id !== team.id);
+              localData.players = localData.players.filter((p) => p.teamId !== team.id);
+              localData.events = localData.events.filter((e) => e.teamId !== team.id);
+              localData.sessions = localData.sessions.filter((s) => !eventIds.has(s.eventId));
+              localData.pitches = localData.pitches.filter((p) => !eventIds.has(p.eventId));
+
+              saveData(localData, true);
+
+              if (activeTeamUnsubscribes.has(team.id)) {
+                const unsubFn = activeTeamUnsubscribes.get(team.id);
+                if (unsubFn) unsubFn();
+                activeTeamUnsubscribes.delete(team.id);
+              }
+            }
+            return;
+          }
+
+          if (snapshot.exists() && !isPushingToCloud) {
+            const remoteTeam = snapshot.data() as any;
+            if (remoteTeam && remoteTeam.id) {
+              const localData = loadData();
+
+              // Merge team
+              const tIdx = localData.teams.findIndex((t) => t.id === remoteTeam.id);
+              const mergedTeam: Team = {
+                id: remoteTeam.id,
+                name: remoteTeam.name || team.name,
+                imageUrl: remoteTeam.imageUrl || undefined,
+                createdBy: remoteTeam.createdBy || team.createdBy,
+                createdAt: remoteTeam.createdAt || team.createdAt,
+                memberCoachIds: Array.isArray(remoteTeam.memberCoachIds)
+                  ? remoteTeam.memberCoachIds
+                  : team.memberCoachIds,
+                inviteCode: remoteTeam.inviteCode || team.inviteCode,
+                inviteCodeCreatedAt: remoteTeam.inviteCodeCreatedAt || team.inviteCodeCreatedAt,
+                pitchRulePresetId:
+                  remoteTeam.pitchRulePresetId || team.pitchRulePresetId || 'usa_pitch_smart',
+              };
+              if (tIdx >= 0) {
+                localData.teams[tIdx] = mergedTeam;
+              } else {
+                localData.teams.push(mergedTeam);
+              }
+
+              // Merge players
+              if (Array.isArray(remoteTeam.players)) {
+                remoteTeam.players.forEach((p: Player) => {
+                  if (p && p.id) {
+                    const pIdx = localData.players.findIndex((lp) => lp.id === p.id);
+                    if (pIdx >= 0) {
+                      localData.players[pIdx] = { ...localData.players[pIdx], ...p };
+                    } else {
+                      localData.players.push(p);
+                    }
+                  }
+                });
+              }
+
+              // Merge events (games & bullpens)
+              if (Array.isArray(remoteTeam.events)) {
+                remoteTeam.events.forEach((e: BaseballEvent) => {
+                  if (e && e.id) {
+                    const eIdx = localData.events.findIndex((le) => le.id === e.id);
+                    if (eIdx >= 0) {
+                      localData.events[eIdx] = { ...localData.events[eIdx], ...e };
+                    } else {
+                      localData.events.push(e);
+                    }
+                  }
+                });
+              }
+
+              // Merge sessions
+              if (Array.isArray(remoteTeam.sessions)) {
+                remoteTeam.sessions.forEach((s: PitcherSession) => {
+                  if (s && s.id) {
+                    const sIdx = localData.sessions.findIndex((ls) => ls.id === s.id);
+                    if (sIdx >= 0) {
+                      localData.sessions[sIdx] = { ...localData.sessions[sIdx], ...s };
+                    } else {
+                      localData.sessions.push(s);
+                    }
+                  }
+                });
+              }
+
+              // Merge pitches
+              if (Array.isArray(remoteTeam.pitches)) {
+                remoteTeam.pitches.forEach((pi: Pitch) => {
+                  if (pi && pi.id) {
+                    const piIdx = localData.pitches.findIndex((lpi) => lpi.id === pi.id);
+                    if (piIdx >= 0) {
+                      localData.pitches[piIdx] = { ...localData.pitches[piIdx], ...pi };
+                    } else {
+                      localData.pitches.push(pi);
+                    }
+                  }
+                });
+              }
+
+              saveData(localData, true); // save locally and trigger UI notify without echoing
+            }
+          }
+        },
+        (err) => {
+          console.warn(`Notice on team ${team.id} real-time sync:`, err);
+        },
+      );
+      activeTeamUnsubscribes.set(team.id, unsub);
+    } catch (e) {
+      console.warn(`Failed to listen to team ${team.id}:`, e);
+    }
+  }
+}
+
 export function initCloudSync(coachEmail?: string, coachUid?: string): () => void {
   const docId = coachEmail
     ? coachEmail.trim().toLowerCase().replace(/[^a-z0-9]/g, '_')
@@ -298,6 +464,12 @@ export function initCloudSync(coachEmail?: string, coachUid?: string): () => voi
 
   currentCloudDocId = docId;
   notifySyncStatus('syncing');
+
+  // Immediately initialize listeners for any locally known teams
+  const initialData = loadData();
+  if (initialData.teams.length > 0) {
+    syncTeamListeners(initialData.teams);
+  }
 
   const coachDocRef = doc(db, 'coaches', docId, 'state', 'current');
 
@@ -343,6 +515,8 @@ export function initCloudSync(coachEmail?: string, coachUid?: string): () => voi
             saveData(merged, true); // Save locally without echoing back to cloud
             // Ensure invite records are registered for joined/created teams
             syncTeamAndInvitesToFirestore(merged.teams, merged.players, merged.coaches).catch(() => {});
+            // Maintain team listeners for all teams
+            syncTeamListeners(merged.teams);
             notifySyncStatus('synced');
           }
         } else {
@@ -370,6 +544,10 @@ export function initCloudSync(coachEmail?: string, coachUid?: string): () => voi
       activeCloudUnsubscribe();
       activeCloudUnsubscribe = null;
     }
+    for (const unsub of activeTeamUnsubscribes.values()) {
+      unsub();
+    }
+    activeTeamUnsubscribes.clear();
   };
 }
 
@@ -705,13 +883,61 @@ export async function joinTeamByCode(
         // Merge team players
         if (Array.isArray(remote.players)) {
           remote.players.forEach((p: any) => {
-            if (p && p.id && !data.players.some((lp) => lp.id === p.id)) {
-              data.players.push(p);
+            if (p && p.id) {
+              const pIdx = data.players.findIndex((lp) => lp.id === p.id);
+              if (pIdx >= 0) {
+                data.players[pIdx] = { ...data.players[pIdx], ...p };
+              } else {
+                data.players.push(p);
+              }
+            }
+          });
+        }
+
+        // Merge team events (games & bullpens)
+        if (Array.isArray(remote.events)) {
+          remote.events.forEach((e: any) => {
+            if (e && e.id) {
+              const eIdx = data.events.findIndex((le) => le.id === e.id);
+              if (eIdx >= 0) {
+                data.events[eIdx] = { ...data.events[eIdx], ...e };
+              } else {
+                data.events.push(e);
+              }
+            }
+          });
+        }
+
+        // Merge team sessions
+        if (Array.isArray(remote.sessions)) {
+          remote.sessions.forEach((s: any) => {
+            if (s && s.id) {
+              const sIdx = data.sessions.findIndex((ls) => ls.id === s.id);
+              if (sIdx >= 0) {
+                data.sessions[sIdx] = { ...data.sessions[sIdx], ...s };
+              } else {
+                data.sessions.push(s);
+              }
+            }
+          });
+        }
+
+        // Merge team pitches
+        if (Array.isArray(remote.pitches)) {
+          remote.pitches.forEach((pi: any) => {
+            if (pi && pi.id) {
+              const piIdx = data.pitches.findIndex((lpi) => lpi.id === pi.id);
+              if (piIdx >= 0) {
+                data.pitches[piIdx] = { ...data.pitches[piIdx], ...pi };
+              } else {
+                data.pitches.push(pi);
+              }
             }
           });
         }
 
         saveData(data);
+        syncTeamListeners(data.teams);
 
         // Update Firestore invite & team doc with joined member coach list
         try {
@@ -800,13 +1026,32 @@ export function deleteTeam(teamId: string, coachId: string): { success: boolean;
     return { success: false, error: 'Only the team creator can delete this team.' };
   }
 
+  // Extract event IDs before filtering out events
+  const teamEvents = data.events.filter((e) => e.teamId === teamId);
+  const eventIds = new Set(teamEvents.map((e) => e.id));
+
   data.teams = data.teams.filter((t) => t.id !== teamId);
   data.players = data.players.filter((p) => p.teamId !== teamId);
   data.events = data.events.filter((e) => e.teamId !== teamId);
-  // Also delete sessions and pitches for this team's events
-  const eventIds = new Set(data.events.filter((e) => e.teamId === teamId).map((e) => e.id));
   data.sessions = data.sessions.filter((s) => !eventIds.has(s.eventId));
   data.pitches = data.pitches.filter((p) => !eventIds.has(p.eventId));
+
+  // Clean up real-time listener for this team if active
+  if (activeTeamUnsubscribes.has(teamId)) {
+    const unsub = activeTeamUnsubscribes.get(teamId);
+    if (unsub) unsub();
+    activeTeamUnsubscribes.delete(teamId);
+  }
+
+  // Remove team document and invite code document from Firestore if connected
+  if (team.inviteCode) {
+    const cleanCode = extractCleanInviteCode(team.inviteCode);
+    if (cleanCode) {
+      deleteDoc(doc(db, 'invite_codes', cleanCode)).catch(() => {});
+      deleteDoc(doc(db, 'invite_codes', cleanCode.replace(/-/g, ''))).catch(() => {});
+    }
+  }
+  deleteDoc(doc(db, 'teams', teamId)).catch(() => {});
 
   saveData(data);
   return { success: true };

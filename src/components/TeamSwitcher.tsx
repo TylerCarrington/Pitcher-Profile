@@ -292,7 +292,7 @@ export const TeamSwitcher: React.FC<TeamSwitcherProps> = ({
                   placeholder="e.g. Westlake Wildcats 11U"
                   value={newTeamName}
                   onChange={(e) => setNewTeamName(e.target.value)}
-                  className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-xs"
                 />
               </div>
 
@@ -303,7 +303,7 @@ export const TeamSwitcher: React.FC<TeamSwitcherProps> = ({
                 <select
                   value={newTeamPreset}
                   onChange={(e) => setNewTeamPreset(e.target.value as PitchRulePresetId)}
-                  className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                  className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 shadow-xs"
                 >
                   {PITCH_RULE_PRESETS.map((preset) => (
                     <option key={preset.id} value={preset.id}>
@@ -383,7 +383,7 @@ export const TeamSwitcher: React.FC<TeamSwitcherProps> = ({
                   placeholder="e.g. HAWKS-2026"
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value)}
-                  className="w-full text-sm font-mono uppercase px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500"
+                  className="w-full text-sm font-mono uppercase px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 shadow-xs"
                 />
               </div>
 

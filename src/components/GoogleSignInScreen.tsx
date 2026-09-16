@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase';
 import pitchLogo from '../assets/pitch.png';
-import { AlertCircle, ExternalLink, Copy, Check, UserCheck } from 'lucide-react';
+import firebaseConfig from '../../firebase-applet-config.json';
+import { AlertCircle, HelpCircle, Mail, Copy, Check, X } from 'lucide-react';
 
 interface GoogleSignInScreenProps {
   onSignIn: (profile: { name: string; email: string; avatar?: string }) => void;
@@ -13,57 +14,66 @@ export const GoogleSignInScreen: React.FC<GoogleSignInScreenProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copiedDomain, setCopiedDomain] = useState(false);
-  const [isUnauthorizedDomain, setIsUnauthorizedDomain] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
+  const [copiedEmail, setCopiedEmail] = useState(false);
 
-  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  // App support email derived from the Firebase project identity or custom env
+  const appSupportEmail =
+    (import.meta as any).env?.VITE_APP_SUPPORT_EMAIL ||
+    `support@${firebaseConfig.projectId || 'pitcher-profile'}.firebaseapp.com`;
 
   const handleGoogleLogin = async () => {
     try {
       setLoading(true);
       setError(null);
-      setIsUnauthorizedDomain(false);
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
-      
+
       onSignIn({
-        name: user.displayName || user.email?.split('@')[0] || 'Unknown Coach',
+        name: user.displayName || user.email?.split('@')[0] || 'Coach',
         email: user.email || '',
         avatar: user.photoURL || undefined,
       });
     } catch (err: any) {
       console.error('Google Sign-In Error:', err);
-      const isDomainErr =
-        err?.code === 'auth/unauthorized-domain' ||
-        err?.message?.includes('auth/unauthorized-domain') ||
-        err?.message?.toLowerCase()?.includes('unauthorized domain');
 
-      setIsUnauthorizedDomain(Boolean(isDomainErr));
-      setError(err?.message || 'Failed to sign in with Google');
+      if (err?.code === 'auth/popup-closed-by-user') {
+        setError('Sign-in popup was closed before completing. Please try again.');
+      } else if (
+        err?.code === 'auth/unauthorized-domain' ||
+        err?.message?.includes('auth/unauthorized-domain')
+      ) {
+        setError(
+          'This domain is not yet authorized in the Firebase project settings. Please notify app support to complete setup.'
+        );
+      } else if (err?.code === 'auth/network-request-failed') {
+        setError('Network connection error. Please check your internet and try again.');
+      } else {
+        setError(err?.message || 'Failed to sign in with Google. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCopyDomain = () => {
-    if (currentHostname) {
-      navigator.clipboard.writeText(currentHostname);
-      setCopiedDomain(true);
-      setTimeout(() => setCopiedDomain(false), 2000);
-    }
+  const handleCopyEmail = () => {
+    navigator.clipboard.writeText(appSupportEmail);
+    setCopiedEmail(true);
+    setTimeout(() => setCopiedEmail(false), 2000);
   };
 
-  const handleBypassSignIn = () => {
-    onSignIn({
-      name: 'Coach Tyler',
-      email: 'tylercarringtonwa@gmail.com',
-    });
-  };
+  const supportMailtoUrl = (() => {
+    const subject = encodeURIComponent('Pitch Tracker Support: Sign-in Assistance');
+    const body = encodeURIComponent(
+      `Hello Pitch Tracker Support,\n\nI need assistance signing in to the Pitch Tracker application.\n\nIssue Details:\n- App: Pitch Tracker (${firebaseConfig.projectId})\n- Page URL: ${typeof window !== 'undefined' ? window.location.href : 'Unknown'}\n- Browser: ${typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown'}\n- Error Message: ${error || 'None'}\n\nPlease help resolve this login issue.\n\nThank you.`
+    );
+    return `mailto:${appSupportEmail}?subject=${subject}&body=${body}`;
+  })();
 
   return (
     <div
       id="google-signin-screen"
-      className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-center items-center px-6 py-12"
+      className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-center items-center px-6 py-12 relative"
     >
       <div className="w-full max-w-md flex flex-col items-center text-center space-y-8">
         {/* Logo/Icon */}
@@ -86,71 +96,33 @@ export const GoogleSignInScreen: React.FC<GoogleSignInScreenProps> = ({
           </p>
         </div>
 
-        {/* Unauthorized Domain Guide Box */}
-        {isUnauthorizedDomain ? (
-          <div className="w-full text-left bg-amber-950/40 border border-amber-500/40 rounded-2xl p-4 sm:p-5 space-y-3.5 animate-in fade-in">
+        {/* Error Notification with Direct Support Action */}
+        {error && (
+          <div className="w-full text-left bg-rose-950/40 border border-rose-500/30 p-4 rounded-2xl space-y-3 animate-in fade-in">
             <div className="flex items-start gap-2.5">
-              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-sm font-bold text-amber-200">
-                  Firebase Domain Authorization Required
-                </h3>
-                <p className="text-xs text-amber-300/80 mt-1 leading-relaxed">
-                  Firebase Authentication requires your custom domain to be in the authorized list before Google popups can proceed.
+              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="text-xs sm:text-sm font-medium text-rose-300">
+                  {error}
                 </p>
               </div>
             </div>
-
-            <div className="bg-slate-950/70 p-3 rounded-xl border border-slate-800 space-y-2">
-              <div className="text-[11px] text-slate-400 font-medium">Your current domain to add:</div>
-              <div className="flex items-center justify-between gap-2 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700">
-                <code className="text-xs font-mono text-emerald-400 truncate">
-                  {currentHostname || 'tylercarrington.github.io'}
-                </code>
-                <button
-                  type="button"
-                  onClick={handleCopyDomain}
-                  className="text-xs text-slate-400 hover:text-white flex items-center gap-1 shrink-0 p-1"
-                  title="Copy domain"
-                >
-                  {copiedDomain ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                  <span>{copiedDomain ? 'Copied' : 'Copy'}</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="text-xs text-slate-300 space-y-1.5">
-              <div className="font-semibold text-slate-200">How to fix in 1 minute:</div>
-              <ol className="list-decimal list-inside space-y-1 text-slate-400 text-[11px] pl-1">
-                <li>Open the <a href="https://console.firebase.google.com/project/pitcher-profile/authentication/settings" target="_blank" rel="noreferrer" className="text-amber-300 underline font-semibold inline-flex items-center gap-0.5">Firebase Console Settings <ExternalLink className="w-2.5 h-2.5" /></a></li>
-                <li>In the <strong>Authorized domains</strong> section, click <strong>Add domain</strong></li>
-                <li>Paste <code className="text-amber-200">{currentHostname || 'tylercarrington.github.io'}</code> and click <strong>Save</strong></li>
-              </ol>
-            </div>
-
-            <div className="pt-2 border-t border-amber-500/20">
+            <div className="pt-2 border-t border-rose-500/20 flex items-center justify-between">
+              <span className="text-[11px] text-rose-300/80">Need help resolving this?</span>
               <button
                 type="button"
-                onClick={handleBypassSignIn}
-                className="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-bold text-xs shadow-md transition flex items-center justify-center gap-2"
+                onClick={() => setShowSupportModal(true)}
+                className="text-xs font-semibold text-rose-200 hover:text-white underline inline-flex items-center gap-1"
               >
-                <UserCheck className="w-3.5 h-3.5" />
-                <span>Continue as Coach for now (Bypass)</span>
+                <Mail className="w-3.5 h-3.5" />
+                <span>Contact Support</span>
               </button>
             </div>
           </div>
-        ) : error ? (
-          <div className="w-full text-sm font-medium text-rose-400 bg-rose-400/10 p-3 rounded-xl border border-rose-400/20 text-left">
-            {error}
-          </div>
-        ) : null}
+        )}
 
-        {/* Call to Action */}
-        <div className="w-full space-y-3">
+        {/* Sign In CTA */}
+        <div className="w-full space-y-4">
           <button
             type="button"
             onClick={handleGoogleLogin}
@@ -179,18 +151,91 @@ export const GoogleSignInScreen: React.FC<GoogleSignInScreenProps> = ({
             <span>{loading ? 'Signing in...' : 'Sign in with Google'}</span>
           </button>
 
-          {!isUnauthorizedDomain && (
+          <div className="pt-2">
             <button
               type="button"
-              onClick={handleBypassSignIn}
-              className="text-xs text-slate-400 hover:text-slate-300 font-medium underline py-1"
+              onClick={() => setShowSupportModal(true)}
+              className="text-xs text-slate-400 hover:text-slate-200 inline-flex items-center gap-1.5 transition"
             >
-              Or test app as Coach Tyler
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>Having trouble signing in? Contact App Support</span>
             </button>
-          )}
+          </div>
         </div>
       </div>
+
+      {/* Contact Support Dialog */}
+      {showSupportModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-5 animate-in fade-in">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <Mail className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">App Support</h3>
+                  <p className="text-xs text-slate-400">Pitch Tracker Helpdesk</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSupportModal(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              If you or any coach runs into authentication or access issues, contact the app support team directly.
+            </p>
+
+            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Application Support Email
+              </span>
+              <div className="flex items-center justify-between gap-2 bg-slate-900 px-3 py-2 rounded-lg border border-slate-700/80">
+                <code className="text-xs font-mono text-emerald-400 select-all truncate">
+                  {appSupportEmail}
+                </code>
+                <button
+                  type="button"
+                  onClick={handleCopyEmail}
+                  className="text-xs text-slate-300 hover:text-white flex items-center gap-1 shrink-0 p-1 font-medium"
+                  title="Copy email"
+                >
+                  {copiedEmail ? (
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  ) : (
+                    <Copy className="w-3.5 h-3.5" />
+                  )}
+                  <span>{copiedEmail ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              <a
+                href={supportMailtoUrl}
+                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs shadow-md transition flex items-center justify-center gap-2"
+              >
+                <Mail className="w-4 h-4" />
+                <span>Open Email with Diagnostics</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setShowSupportModal(false)}
+                className="w-full py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
 

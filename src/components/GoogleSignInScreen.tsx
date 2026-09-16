@@ -61,9 +61,9 @@ export const GoogleSignInScreen: React.FC<GoogleSignInScreenProps> = ({
   };
 
   const supportMailtoUrl = (() => {
-    const subject = encodeURIComponent('Pitch Tracker Support: Sign-in Assistance');
+    const subject = encodeURIComponent('Pitcher Profile Support: Sign-in Assistance');
     const body = encodeURIComponent(
-      `Hello Pitch Tracker Support,\n\nI need assistance signing in to the Pitch Tracker application.\n\nIssue Details:\n- App: Pitch Tracker (${firebaseConfig.projectId})\n- Page URL: ${typeof window !== 'undefined' ? window.location.href : 'Unknown'}\n- Browser: ${typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown'}\n- Error Message: ${error || 'None'}\n\nPlease help resolve this login issue.\n\nThank you.`
+      `Hello Pitcher Profile Support,\n\nI need assistance signing in to the Pitcher Profile application.\n\nIssue Details:\n- App: Pitcher Profile (${firebaseConfig.projectId})\n- Page URL: ${typeof window !== 'undefined' ? window.location.href : 'Unknown'}\n- Browser: ${typeof navigator !== 'undefined' ? navigator.userAgent : 'Unknown'}\n- Error Message: ${error || 'None'}\n\nPlease help resolve this login issue.\n\nThank you.`
     );
     return `mailto:${appSupportEmail}?subject=${subject}&body=${body}`;
   })();
@@ -78,7 +78,7 @@ export const GoogleSignInScreen: React.FC<GoogleSignInScreenProps> = ({
         <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl shadow-2xl overflow-hidden border border-emerald-500/30 bg-slate-800">
           <img
             src={pitchLogo}
-            alt="Pitch Tracker Logo"
+            alt="Pitcher Profile Logo"
             referrerPolicy="no-referrer"
             className="w-full h-full object-cover"
           />
@@ -173,7 +173,7 @@ export const GoogleSignInScreen: React.FC<GoogleSignInScreenProps> = ({
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white">App Support</h3>
-                  <p className="text-xs text-slate-400">Pitch Tracker Helpdesk</p>
+                  <p className="text-xs text-slate-400">Pitcher Profile Helpdesk</p>
                 </div>
               </div>
               <button

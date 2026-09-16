@@ -1,5 +1,5 @@
 {
-  "name": "Pitch Tracker & Coach Scouting",
+  "name": "Pitcher Profile",
   "description": "Youth baseball pitch-by-pitch tracking, touch strike-zone plotting with magnified preview, and coaching scouting sessions.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

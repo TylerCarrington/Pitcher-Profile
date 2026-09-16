@@ -84,13 +84,13 @@ export const PostSignInScreen: React.FC<PostSignInScreenProps> = ({
           <div className="flex items-center gap-2.5">
             <img
               src={pitchLogo}
-              alt="Pitch Tracker App Icon"
+              alt="Pitcher Profile App Icon"
               referrerPolicy="no-referrer"
               className="w-9 h-9 rounded-xl object-cover shadow-lg border border-emerald-500/30"
             />
             <div>
               <span className="font-bold text-white text-base tracking-tight leading-none block">
-                PitchScout Live
+                Pitcher Profile
               </span>
               <span className="text-[11px] text-slate-400 font-medium leading-none block mt-0.5">
                 Coach Onboarding
@@ -212,7 +212,7 @@ export const PostSignInScreen: React.FC<PostSignInScreenProps> = ({
 
       {/* Footer info */}
       <footer className="w-full text-center py-6 text-xs text-slate-500 border-t border-slate-800/40">
-        PitchScout Live &bull; Real-time pitch tracking, strike zone plots &amp; USA Baseball Pitch Smart safety.
+        Pitcher Profile &bull; Real-time pitch tracking, strike zone plots &amp; USA Baseball Pitch Smart safety.
       </footer>
 
       {/* Modal: Create Team */}

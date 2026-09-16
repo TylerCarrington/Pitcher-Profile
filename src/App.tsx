@@ -517,13 +517,13 @@ export default function App() {
           <div className="flex items-center gap-2.5">
             <img
               src={pitchLogo}
-              alt="Pitch Tracker"
+              alt="Pitcher Profile"
               referrerPolicy="no-referrer"
               className="w-8 h-8 rounded-lg object-cover shadow-sm border border-emerald-500/30 shrink-0"
             />
             <div className="hidden sm:block">
               <h1 className="font-black text-base tracking-tight text-white leading-none">
-                Pitch Tracker
+                Pitcher Profile
               </h1>
               <p className="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider mt-0.5">
                 Youth Baseball Scouting &amp; Live Tracking

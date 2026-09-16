@@ -71,7 +71,7 @@ export const PWAInstallButton: React.FC = () => {
                 </button>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                To install <strong className="text-slate-900">Pitch Tracker &amp; Coach Scouting</strong> to your Home Screen:
+                To install <strong className="text-slate-900">Pitcher Profile</strong> to your Home Screen:
               </p>
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 text-xs text-slate-600 space-y-2 font-medium">
                 <div className="flex items-start gap-2">

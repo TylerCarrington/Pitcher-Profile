@@ -15,8 +15,8 @@ export default defineConfig(() => {
         includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
         manifest: {
           id: './',
-          name: 'Pitch Tracker & Coach Scouting',
-          short_name: 'PitchTracker',
+          name: 'Pitcher Profile',
+          short_name: 'Pitcher Profile',
           description: 'Youth baseball pitch-by-pitch tracking, touch strike-zone plotting with magnified preview, and coaching scouting sessions.',
           theme_color: '#0f172a',
           background_color: '#0f172a',

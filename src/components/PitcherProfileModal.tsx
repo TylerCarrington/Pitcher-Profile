@@ -269,7 +269,7 @@ export const PitcherProfileModal: React.FC<PitcherProfileModalProps> = ({
             }`}
           >
             <Target className="w-3.5 h-3.5" />
-            <span>Strike Zone Heatmap</span>
+            <span>Strike Zone Breakdown</span>
           </button>
           <button
             type="button"
@@ -477,12 +477,12 @@ export const PitcherProfileModal: React.FC<PitcherProfileModalProps> = ({
             </div>
           )}
 
-          {/* TAB 2: STRIKE ZONE HEATMAP */}
+          {/* TAB 2: STRIKE ZONE BREAKDOWN */}
           {activeTab === 'heatmap' && (
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
                 <div>
-                  <h4 className="font-bold text-sm text-slate-900">Career / Season Heatmap</h4>
+                  <h4 className="font-bold text-sm text-slate-900">Career / Season Breakdown</h4>
                   <p className="text-xs text-slate-500">
                     Filtered across {filteredPitches.length} pitches
                   </p>

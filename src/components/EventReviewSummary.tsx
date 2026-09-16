@@ -380,7 +380,7 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
           <div className="flex items-center gap-2">
             <Trophy className="w-4 h-4 text-amber-500" />
             <h3 className="font-bold text-sm text-slate-800">
-              Pitcher Performance &amp; Heatmaps
+              Pitcher Performance &amp; Breakdowns
             </h3>
           </div>
           <span className="text-xs text-slate-500 font-medium">
@@ -502,25 +502,25 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
                         </div>
                       )}
 
-                      {/* Toggle Heatmap Button */}
+                      {/* Toggle Breakdown Button */}
                       <button
                         type="button"
                         className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition flex items-center gap-1 text-xs font-semibold"
                       >
                         <Target className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="hidden sm:inline">{isExpanded ? 'Hide Map' : 'Heatmap'}</span>
+                        <span className="hidden sm:inline">{isExpanded ? 'Hide Breakdown' : 'Breakdown'}</span>
                         {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                       </button>
                     </div>
                   </div>
 
-                  {/* Expanded Scouting Analysis & Strike Zone Heatmap */}
+                  {/* Expanded Scouting Analysis & Strike Zone Breakdown */}
                   {isExpanded && (
                     <div className="p-4 sm:p-6 bg-slate-50/50 space-y-5">
                       <div>
                         <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
                           <Target className="w-4 h-4 text-emerald-600" />
-                          <span>{pitcher.name}'s Event Strike Zone &amp; Arsenal Heatmap</span>
+                          <span>{pitcher.name}'s Event Strike Zone &amp; Arsenal Breakdown</span>
                         </h4>
                         <p className="text-xs text-slate-500">
                           Interactive breakdown of pitch locations, outcomes, and arsenal mix for this event.

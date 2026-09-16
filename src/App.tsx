@@ -68,6 +68,8 @@ import { CoachSwitcher } from './components/CoachSwitcher';
 import { TeamSwitcher } from './components/TeamSwitcher';
 import { GoogleSignInScreen } from './components/GoogleSignInScreen';
 import { PostSignInScreen } from './components/PostSignInScreen';
+import { PWAInstallButton } from './components/PWAInstallButton';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import pitchLogo from './assets/pitch.png';
 import { Activity, Users, Calendar, ArrowLeft, Plus, Link, Cloud, RefreshCw, CloudOff, CheckCircle2 } from 'lucide-react';
 
@@ -577,6 +579,8 @@ export default function App() {
               />
             )}
 
+            <PWAInstallButton />
+
             <CoachSwitcher
               currentCoach={currentCoach}
               allCoaches={allCoaches}
@@ -692,6 +696,7 @@ export default function App() {
           </div>
         )}
       </main>
+      <OfflineIndicator />
     </div>
   );
 }

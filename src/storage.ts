@@ -1523,11 +1523,24 @@ export function getEventWarningFlags(eventId: string): SafetyWarningFlag[] {
   return flags;
 }
 
+export function getSessionById(sessionId: string): PitcherSession | undefined {
+  return loadData().sessions.find((s) => s.id === sessionId);
+}
+
 // Pitches
 export function getPitchesForSession(sessionId: string): Pitch[] {
-  return loadData()
-    .pitches.filter((p) => p.sessionId === sessionId)
-    .sort((a, b) => a.pitchNumber - b.pitchNumber);
+  const data = loadData();
+  const session = data.sessions.find((s) => s.id === sessionId);
+  const rawPitches = data.pitches.filter(
+    (p) =>
+      p.sessionId === sessionId ||
+      (session && p.eventId === session.eventId && p.pitcherId === session.pitcherId),
+  );
+
+  const pitchMap = new Map<string, Pitch>();
+  rawPitches.forEach((p) => pitchMap.set(p.id, p));
+
+  return Array.from(pitchMap.values()).sort((a, b) => a.pitchNumber - b.pitchNumber);
 }
 
 export function getPitchesForEvent(eventId: string): Pitch[] {

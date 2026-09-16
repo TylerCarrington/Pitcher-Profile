@@ -43,6 +43,7 @@ import {
   setEventOuts,
   endInningManual,
   getActiveSessionForEvent,
+  getSessionById,
   getSessionsForEvent,
   startPitcherSession,
   endPitcherSession,
@@ -192,7 +193,9 @@ export default function App() {
 
   // Active session
   const activeSession = selectedEvent
-    ? getActiveSessionForEvent(selectedEvent.id) || null
+    ? (activeSessionId ? getSessionById(activeSessionId) : null) ||
+      getActiveSessionForEvent(selectedEvent.id) ||
+      null
     : null;
   const activePitcher =
     activeSession && activeSession.pitcherId

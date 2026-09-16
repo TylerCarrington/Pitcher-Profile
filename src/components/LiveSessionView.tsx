@@ -119,6 +119,15 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
     return () => clearTimeout(timer);
   }, [autoLogNotice]);
 
+  // Sync pitcher picker visibility whenever active session/pitcher changes
+  useEffect(() => {
+    if (activeSession && activePitcher) {
+      setShowPitcherPicker(false);
+    } else {
+      setShowPitcherPicker(true);
+    }
+  }, [activeSession?.id, activePitcher?.id]);
+
   // Derive current count from latest pitch
   const latestPitch = sessionPitches[sessionPitches.length - 1];
   const currentBalls = latestPitch ? latestPitch.ballsAfter : 0;

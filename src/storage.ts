@@ -375,60 +375,40 @@ export function syncTeamListeners(teams: Team[]): void {
                 localData.teams.push(mergedTeam);
               }
 
-              // Merge players
+              // Merge players: replace team's roster with authoritative remote list
               if (Array.isArray(remoteTeam.players)) {
-                remoteTeam.players.forEach((p: Player) => {
-                  if (p && p.id) {
-                    const pIdx = localData.players.findIndex((lp) => lp.id === p.id);
-                    if (pIdx >= 0) {
-                      localData.players[pIdx] = { ...localData.players[pIdx], ...p };
-                    } else {
-                      localData.players.push(p);
-                    }
-                  }
-                });
+                const otherPlayers = localData.players.filter((p) => p.teamId !== remoteTeam.id);
+                const validRemotePlayers = remoteTeam.players.filter((p: Player) => Boolean(p && p.id));
+                localData.players = [...otherPlayers, ...validRemotePlayers];
               }
 
-              // Merge events (games & bullpens)
+              // Merge events: replace team's events with authoritative remote list
               if (Array.isArray(remoteTeam.events)) {
-                remoteTeam.events.forEach((e: BaseballEvent) => {
-                  if (e && e.id) {
-                    const eIdx = localData.events.findIndex((le) => le.id === e.id);
-                    if (eIdx >= 0) {
-                      localData.events[eIdx] = { ...localData.events[eIdx], ...e };
-                    } else {
-                      localData.events.push(e);
-                    }
-                  }
-                });
+                const otherEvents = localData.events.filter((e) => e.teamId !== remoteTeam.id);
+                const validRemoteEvents = remoteTeam.events.filter((e: BaseballEvent) => Boolean(e && e.id));
+                localData.events = [...otherEvents, ...validRemoteEvents];
               }
 
-              // Merge sessions
+              // Merge sessions for events/players of this team
               if (Array.isArray(remoteTeam.sessions)) {
-                remoteTeam.sessions.forEach((s: PitcherSession) => {
-                  if (s && s.id) {
-                    const sIdx = localData.sessions.findIndex((ls) => ls.id === s.id);
-                    if (sIdx >= 0) {
-                      localData.sessions[sIdx] = { ...localData.sessions[sIdx], ...s };
-                    } else {
-                      localData.sessions.push(s);
-                    }
-                  }
-                });
+                const teamEventIds = new Set((remoteTeam.events || []).map((e: BaseballEvent) => e.id));
+                const teamPlayerIds = new Set((remoteTeam.players || []).map((p: Player) => p.id));
+                const otherSessions = localData.sessions.filter(
+                  (s) => !teamEventIds.has(s.eventId) && !teamPlayerIds.has(s.pitcherId),
+                );
+                const validRemoteSessions = remoteTeam.sessions.filter((s: PitcherSession) => Boolean(s && s.id));
+                localData.sessions = [...otherSessions, ...validRemoteSessions];
               }
 
-              // Merge pitches
+              // Merge pitches for events/players of this team
               if (Array.isArray(remoteTeam.pitches)) {
-                remoteTeam.pitches.forEach((pi: Pitch) => {
-                  if (pi && pi.id) {
-                    const piIdx = localData.pitches.findIndex((lpi) => lpi.id === pi.id);
-                    if (piIdx >= 0) {
-                      localData.pitches[piIdx] = { ...localData.pitches[piIdx], ...pi };
-                    } else {
-                      localData.pitches.push(pi);
-                    }
-                  }
-                });
+                const teamEventIds = new Set((remoteTeam.events || []).map((e: BaseballEvent) => e.id));
+                const teamPlayerIds = new Set((remoteTeam.players || []).map((p: Player) => p.id));
+                const otherPitches = localData.pitches.filter(
+                  (pi) => !teamEventIds.has(pi.eventId) && !teamPlayerIds.has(pi.pitcherId),
+                );
+                const validRemotePitches = remoteTeam.pitches.filter((pi: Pitch) => Boolean(pi && pi.id));
+                localData.pitches = [...otherPitches, ...validRemotePitches];
               }
 
               saveData(localData, true); // save locally and trigger UI notify without echoing
@@ -1079,6 +1059,8 @@ export function savePlayer(playerInput: {
     ? playerInput.seasonAge
     : 12;
 
+  let savedPlayer: Player;
+
   if (playerInput.id) {
     const idx = data.players.findIndex((p) => p.id === playerInput.id);
     if (idx !== -1) {
@@ -1091,32 +1073,61 @@ export function savePlayer(playerInput: {
         throws: playerInput.throws || data.players[idx].throws,
         bats: playerInput.bats || data.players[idx].bats,
       };
-      saveData(data);
-      return data.players[idx];
+      savedPlayer = data.players[idx];
+    } else {
+      savedPlayer = {
+        id: playerInput.id,
+        teamId: playerInput.teamId,
+        name: playerInput.name.trim(),
+        jerseyNumber: playerInput.jerseyNumber.trim(),
+        seasonAge,
+        imageUrl: playerInput.imageUrl?.trim() || undefined,
+        throws: playerInput.throws || 'R',
+        bats: playerInput.bats || 'R',
+        createdAt: new Date().toISOString(),
+      };
+      data.players.push(savedPlayer);
     }
+  } else {
+    savedPlayer = {
+      id: `player_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      teamId: playerInput.teamId,
+      name: playerInput.name.trim(),
+      jerseyNumber: playerInput.jerseyNumber.trim(),
+      seasonAge,
+      imageUrl: playerInput.imageUrl?.trim() || undefined,
+      throws: playerInput.throws || 'R',
+      bats: playerInput.bats || 'R',
+      createdAt: new Date().toISOString(),
+    };
+    data.players.push(savedPlayer);
   }
 
-  const newPlayer: Player = {
-    id: `player_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    teamId: playerInput.teamId,
-    name: playerInput.name.trim(),
-    jerseyNumber: playerInput.jerseyNumber.trim(),
-    seasonAge,
-    imageUrl: playerInput.imageUrl?.trim() || undefined,
-    throws: playerInput.throws || 'R',
-    bats: playerInput.bats || 'R',
-    createdAt: new Date().toISOString(),
-  };
-
-  data.players.push(newPlayer);
   saveData(data);
-  return newPlayer;
+
+  // Instantly push updated team roster to Firestore so all co-coaches receive it immediately
+  const team = data.teams.find((t) => t.id === playerInput.teamId);
+  if (team) {
+    syncSingleTeamToCloud(team).catch((err) => console.warn('Instant team player sync notice:', err));
+  }
+
+  return savedPlayer;
 }
 
 export function deletePlayer(playerId: string): void {
   const data = loadData();
+  const playerToDelete = data.players.find((p) => p.id === playerId);
+  const teamId = playerToDelete?.teamId;
+
   data.players = data.players.filter((p) => p.id !== playerId);
   saveData(data);
+
+  if (teamId) {
+    const team = data.teams.find((t) => t.id === teamId);
+    if (team) {
+      syncSingleTeamToCloud(team).catch((err) => console.warn('Instant player delete sync notice:', err));
+    }
+  }
 }
 
 // Events
@@ -1157,6 +1168,10 @@ export function createEvent(eventInput: {
 
   data.events.push(newEvent);
   saveData(data);
+  const team = data.teams.find((t) => t.id === eventInput.teamId);
+  if (team) {
+    syncSingleTeamToCloud(team).catch(() => {});
+  }
   return newEvent;
 }
 
@@ -1225,10 +1240,20 @@ export function endInningManual(eventId: string): BaseballEvent | undefined {
 
 export function deleteEvent(eventId: string): void {
   const data = loadData();
+  const targetEvent = data.events.find((e) => e.id === eventId);
+  const teamId = targetEvent?.teamId;
+
   data.events = data.events.filter((e) => e.id !== eventId);
   data.sessions = data.sessions.filter((s) => s.eventId !== eventId);
   data.pitches = data.pitches.filter((p) => p.eventId !== eventId);
   saveData(data);
+
+  if (teamId) {
+    const team = data.teams.find((t) => t.id === teamId);
+    if (team) {
+      syncSingleTeamToCloud(team).catch(() => {});
+    }
+  }
 }
 
 export function endEvent(eventId: string): BaseballEvent | undefined {

@@ -576,10 +576,10 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
         </div>
 
         {/* Live Pitch Location & Outcome Entry Panel (Phone-Optimized Single Screen Layout) */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 sm:p-5">
-          <div className="flex flex-col lg:flex-row items-center lg:items-start justify-center gap-3 lg:gap-6">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6">
+          <div className="flex flex-col lg:flex-row items-center justify-center gap-4 lg:gap-8 max-w-3xl mx-auto">
             {/* Strike Zone Interactive Grid (Touch and Drag with Magnified Loupe) */}
-            <div className="flex flex-col items-center">
+            <div className="flex flex-col items-center shrink-0">
               <StrikeZoneGrid
                 location={pendingLocation}
                 onChange={handleLocationChange}
@@ -588,10 +588,10 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
             </div>
 
             {/* Fast Pitch Outcome Selector Buttons */}
-            <div className="w-full max-w-sm flex flex-col justify-between self-stretch space-y-2 sm:space-y-4">
+            <div className="w-full max-w-sm flex flex-col justify-center space-y-3 sm:space-y-4">
               {/* Outcome Selector */}
-              <div className="pt-0.5">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-2">
                   <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
                     Select Pitch Result
                   </div>

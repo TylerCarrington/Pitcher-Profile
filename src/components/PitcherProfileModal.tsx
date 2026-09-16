@@ -623,17 +623,36 @@ export const PitcherProfileModal: React.FC<PitcherProfileModalProps> = ({
                             <div className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
                               <FileText className="w-3 h-3 text-slate-400" /> Coach Session Notes:
                             </div>
-                            {coachNotesEntries.map(([coachId, note]) => {
+                            {coachNotesEntries.map(([coachId, noteVal]) => {
                               const author = coaches.find((c) => c.id === coachId);
+                              const rawNote = String(noteVal || '');
+                              const isShared = rawNote.startsWith('[SHARED]');
+                              const noteText = rawNote.replace(/^\[SHARED\]\s*/, '');
+
                               return (
                                 <div
                                   key={coachId}
-                                  className="text-xs bg-slate-50 p-2 rounded-lg border border-slate-200 text-slate-700"
+                                  className={`text-xs p-2 rounded-lg border text-slate-700 space-y-0.5 ${
+                                    isShared
+                                      ? 'bg-emerald-50/60 border-emerald-200/80'
+                                      : 'bg-amber-50/40 border-amber-200/60'
+                                  }`}
                                 >
-                                  <span className="font-semibold text-slate-900">
-                                    {author?.name || 'Coach'}:{' '}
-                                  </span>
-                                  {note}
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className="font-semibold text-slate-900">
+                                      {author?.name || 'Coach'}
+                                    </span>
+                                    <span
+                                      className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                                        isShared
+                                          ? 'bg-emerald-100 text-emerald-800'
+                                          : 'bg-amber-100 text-amber-800'
+                                      }`}
+                                    >
+                                      {isShared ? 'Shared' : 'Private'}
+                                    </span>
+                                  </div>
+                                  <p className="text-slate-700 font-normal leading-relaxed">{noteText}</p>
                                 </div>
                               );
                             })}

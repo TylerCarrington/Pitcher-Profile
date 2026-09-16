@@ -72,8 +72,36 @@ let currentSyncStatus: SyncStatus = 'synced';
 let lastSyncTimestamp: string | null = null;
 const syncStatusListeners = new Set<(status: SyncStatus, lastSync: string | null) => void>();
 
-function notify() {
+const syncChannel =
+  typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined'
+    ? new BroadcastChannel('pitch_tracker_sync_channel')
+    : null;
+
+if (syncChannel) {
+  syncChannel.onmessage = (event) => {
+    if (event.data?.type === 'DATA_UPDATED') {
+      listeners.forEach((fn) => fn());
+    }
+  };
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === STORAGE_KEY) {
+      listeners.forEach((fn) => fn());
+    }
+  });
+}
+
+function notify(broadcast = true) {
   listeners.forEach((fn) => fn());
+  if (broadcast && syncChannel) {
+    try {
+      syncChannel.postMessage({ type: 'DATA_UPDATED', timestamp: Date.now() });
+    } catch {
+      // ignore channel errors
+    }
+  }
 }
 
 function notifySyncStatus(status: SyncStatus) {
@@ -1330,6 +1358,20 @@ export function reopenEvent(eventId: string): void {
   if (event) {
     event.status = 'in_progress';
     event.endedAt = undefined;
+
+    // Reactivate the most recent pitcher session if no session is active
+    const eventSessions = data.sessions.filter((s) => s.eventId === eventId);
+    const hasActive = eventSessions.some((s) => s.status === 'active');
+    if (!hasActive && eventSessions.length > 0) {
+      const sorted = [...eventSessions].sort(
+        (a, b) => new Date(b.startedAt || 0).getTime() - new Date(a.startedAt || 0).getTime(),
+      );
+      if (sorted[0]) {
+        sorted[0].status = 'active';
+        sorted[0].endedAt = undefined;
+      }
+    }
+
     saveData(data);
     syncTeamByEventId(eventId, data);
   }

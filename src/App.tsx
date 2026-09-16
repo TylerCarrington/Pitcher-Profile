@@ -349,6 +349,7 @@ export default function App() {
 
   const handleReopenEvent = (eventId: string) => {
     reopenEvent(eventId);
+    setSelectedEventId(eventId);
     syncStore();
   };
 
@@ -377,6 +378,7 @@ export default function App() {
   const handleReopenSession = (sessionId: string) => {
     const session = reopenPitcherSession(sessionId);
     if (session) {
+      setSelectedEventId(session.eventId);
       setActiveSessionId(session.id);
       syncStore();
     }

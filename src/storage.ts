@@ -208,6 +208,27 @@ export async function syncSingleTeamToCloud(team: Team, dataOverride?: AppData):
   }
 }
 
+export function syncTeamByEventId(eventId: string, data?: AppData): void {
+  const currentData = data || loadData();
+  const event = currentData.events.find((e) => e.id === eventId);
+  if (event?.teamId) {
+    const team = currentData.teams.find((t) => t.id === event.teamId);
+    if (team) {
+      syncSingleTeamToCloud(team, currentData).catch((err) =>
+        console.warn('Notice on instant team cloud sync by event:', err),
+      );
+    }
+  }
+}
+
+export function syncTeamBySessionId(sessionId: string, data?: AppData): void {
+  const currentData = data || loadData();
+  const session = currentData.sessions.find((s) => s.id === sessionId);
+  if (session?.eventId) {
+    syncTeamByEventId(session.eventId, currentData);
+  }
+}
+
 async function syncTeamAndInvitesToFirestore(teams: Team[], players?: Player[], coaches?: Coach[]) {
   const currentData = loadData();
   for (const team of teams) {
@@ -389,23 +410,47 @@ export function syncTeamListeners(teams: Team[]): void {
                 localData.events = [...otherEvents, ...validRemoteEvents];
               }
 
-              // Merge sessions for events/players of this team
+              // Merge sessions for events/players/sessions of this team
               if (Array.isArray(remoteTeam.sessions)) {
-                const teamEventIds = new Set((remoteTeam.events || []).map((e: BaseballEvent) => e.id));
-                const teamPlayerIds = new Set((remoteTeam.players || []).map((p: Player) => p.id));
+                const teamEventIds = new Set<string>();
+                (remoteTeam.events || []).forEach((e: BaseballEvent) => { if (e?.id) teamEventIds.add(e.id); });
+                (remoteTeam.sessions || []).forEach((s: PitcherSession) => { if (s?.eventId) teamEventIds.add(s.eventId); });
+
+                const teamPlayerIds = new Set<string>();
+                (remoteTeam.players || []).forEach((p: Player) => { if (p?.id) teamPlayerIds.add(p.id); });
+                (remoteTeam.sessions || []).forEach((s: PitcherSession) => { if (s?.pitcherId) teamPlayerIds.add(s.pitcherId); });
+
+                const teamSessionIds = new Set<string>();
+                (remoteTeam.sessions || []).forEach((s: PitcherSession) => { if (s?.id) teamSessionIds.add(s.id); });
+
                 const otherSessions = localData.sessions.filter(
-                  (s) => !teamEventIds.has(s.eventId) && !teamPlayerIds.has(s.pitcherId),
+                  (s) => !teamEventIds.has(s.eventId) && !teamPlayerIds.has(s.pitcherId) && !teamSessionIds.has(s.id),
                 );
                 const validRemoteSessions = remoteTeam.sessions.filter((s: PitcherSession) => Boolean(s && s.id));
                 localData.sessions = [...otherSessions, ...validRemoteSessions];
               }
 
-              // Merge pitches for events/players of this team
+              // Merge pitches for events/players/sessions of this team
               if (Array.isArray(remoteTeam.pitches)) {
-                const teamEventIds = new Set((remoteTeam.events || []).map((e: BaseballEvent) => e.id));
-                const teamPlayerIds = new Set((remoteTeam.players || []).map((p: Player) => p.id));
+                const teamEventIds = new Set<string>();
+                (remoteTeam.events || []).forEach((e: BaseballEvent) => { if (e?.id) teamEventIds.add(e.id); });
+                (remoteTeam.sessions || []).forEach((s: PitcherSession) => { if (s?.eventId) teamEventIds.add(s.eventId); });
+                (remoteTeam.pitches || []).forEach((pi: Pitch) => { if (pi?.eventId) teamEventIds.add(pi.eventId); });
+
+                const teamPlayerIds = new Set<string>();
+                (remoteTeam.players || []).forEach((p: Player) => { if (p?.id) teamPlayerIds.add(p.id); });
+                (remoteTeam.sessions || []).forEach((s: PitcherSession) => { if (s?.pitcherId) teamPlayerIds.add(s.pitcherId); });
+                (remoteTeam.pitches || []).forEach((pi: Pitch) => { if (pi?.pitcherId) teamPlayerIds.add(pi.pitcherId); });
+
+                const teamSessionIds = new Set<string>();
+                (remoteTeam.sessions || []).forEach((s: PitcherSession) => { if (s?.id) teamSessionIds.add(s.id); });
+                (remoteTeam.pitches || []).forEach((pi: Pitch) => { if (pi?.sessionId) teamSessionIds.add(pi.sessionId); });
+
                 const otherPitches = localData.pitches.filter(
-                  (pi) => !teamEventIds.has(pi.eventId) && !teamPlayerIds.has(pi.pitcherId),
+                  (pi) =>
+                    !teamEventIds.has(pi.eventId) &&
+                    !teamPlayerIds.has(pi.pitcherId) &&
+                    !teamSessionIds.has(pi.sessionId),
                 );
                 const validRemotePitches = remoteTeam.pitches.filter((pi: Pitch) => Boolean(pi && pi.id));
                 localData.pitches = [...otherPitches, ...validRemotePitches];
@@ -1197,6 +1242,7 @@ export function updateEventInningAndOuts(
       event.inningHalf = update.inningHalf;
     }
     saveData(data);
+    syncTeamByEventId(eventId, data);
   }
   return event;
 }
@@ -1208,6 +1254,7 @@ export function advanceEventInning(eventId: string): BaseballEvent | undefined {
     event.currentInning = (event.currentInning || 1) + 1;
     event.currentOuts = 0;
     saveData(data);
+    syncTeamByEventId(eventId, data);
   }
   return event;
 }
@@ -1223,6 +1270,7 @@ export function setEventOuts(eventId: string, outs: number): BaseballEvent | und
       event.currentOuts = Math.max(0, outs);
     }
     saveData(data);
+    syncTeamByEventId(eventId, data);
   }
   return event;
 }
@@ -1234,6 +1282,7 @@ export function endInningManual(eventId: string): BaseballEvent | undefined {
     event.currentInning = (event.currentInning || 1) + 1;
     event.currentOuts = 0;
     saveData(data);
+    syncTeamByEventId(eventId, data);
   }
   return event;
 }
@@ -1270,6 +1319,7 @@ export function endEvent(eventId: string): BaseballEvent | undefined {
       }
     });
     saveData(data);
+    syncTeamByEventId(eventId, data);
   }
   return event;
 }
@@ -1281,6 +1331,7 @@ export function reopenEvent(eventId: string): void {
     event.status = 'in_progress';
     event.endedAt = undefined;
     saveData(data);
+    syncTeamByEventId(eventId, data);
   }
 }
 
@@ -1314,6 +1365,7 @@ export function startPitcherSession(eventId: string, pitcherId: string): Pitcher
 
   data.sessions.push(newSession);
   saveData(data);
+  syncTeamByEventId(eventId, data);
   return newSession;
 }
 
@@ -1341,6 +1393,7 @@ export function reopenPitcherSession(sessionId: string): PitcherSession | undefi
   }
 
   saveData(data);
+  syncTeamBySessionId(sessionId, data);
   return session;
 }
 
@@ -1351,14 +1404,22 @@ export function endPitcherSession(sessionId: string): void {
     session.status = 'completed';
     session.endedAt = new Date().toISOString();
     saveData(data);
+    syncTeamBySessionId(sessionId, data);
   }
 }
 
 export function deletePitcherSession(sessionId: string): void {
   const data = loadData();
+  const targetSession = data.sessions.find((s) => s.id === sessionId);
+  const eventId = targetSession?.eventId;
+
   data.sessions = data.sessions.filter((s) => s.id !== sessionId);
   data.pitches = data.pitches.filter((p) => p.sessionId !== sessionId);
   saveData(data);
+
+  if (eventId) {
+    syncTeamByEventId(eventId, data);
+  }
 }
 
 export function updateSessionNotes(sessionId: string, coachId: string, notes: string): void {
@@ -1370,6 +1431,7 @@ export function updateSessionNotes(sessionId: string, coachId: string, notes: st
     }
     session.coachNotes[coachId] = notes;
     saveData(data);
+    syncTeamBySessionId(sessionId, data);
   }
 }
 
@@ -1399,6 +1461,7 @@ export function addSessionWarningFlag(
 
   session.warningFlags.push(newFlag);
   saveData(data);
+  syncTeamBySessionId(sessionId, data);
   return newFlag;
 }
 
@@ -1536,6 +1599,7 @@ export function addPitchToSession(params: {
 
   data.pitches.push(newPitch);
   saveData(data);
+  syncTeamByEventId(params.eventId, data);
   return newPitch;
 }
 
@@ -1552,6 +1616,7 @@ export function updatePitch(pitchUpdate: Partial<Pitch> & { id: string; sessionI
   // Recalculate running counts for this session
   recalculateSessionPitches(data, pitchUpdate.sessionId);
   saveData(data);
+  syncTeamBySessionId(pitchUpdate.sessionId, data);
 }
 
 export function deletePitch(pitchId: string, sessionId: string): void {
@@ -1559,6 +1624,7 @@ export function deletePitch(pitchId: string, sessionId: string): void {
   data.pitches = data.pitches.filter((p) => p.id !== pitchId);
   recalculateSessionPitches(data, sessionId);
   saveData(data);
+  syncTeamBySessionId(sessionId, data);
 }
 
 function calculateCountAfter(

@@ -101,8 +101,8 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
   const [playerThrows, setPlayerThrows] = useState<'R' | 'L'>('R');
   const [playerSeasonAge, setPlayerSeasonAge] = useState<number>(11);
 
-  // Share link copied toast
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  // Share link / code copied toast
+  const [copiedState, setCopiedState] = useState<{ id: string; type: 'code' | 'link' } | null>(null);
 
   // Pitcher profile / scouting modal
   const [selectedPitcherForProfile, setSelectedPitcherForProfile] = useState<Player | null>(null);
@@ -227,11 +227,18 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
     setShowPlayerModal(false);
   };
 
+  const copyInviteCode = (code: string, teamId: string) => {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopiedState({ id: teamId, type: 'code' });
+      setTimeout(() => setCopiedState(null), 2500);
+    });
+  };
+
   const copyShareLink = (team: Team) => {
     const shareUrl = `${window.location.origin}${window.location.pathname}?join=${team.inviteCode}`;
     navigator.clipboard.writeText(shareUrl).then(() => {
-      setCopiedCode(team.id);
-      setTimeout(() => setCopiedCode(null), 2500);
+      setCopiedState({ id: team.id, type: 'link' });
+      setTimeout(() => setCopiedState(null), 2500);
     });
   };
 
@@ -304,7 +311,27 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                 title="Manage coaches and invite links"
               >
                 <Users className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Coaches ({teamCoaches.length || 1}) &amp; Join Link</span>
+                <span>Coaches ({teamCoaches.length || 1})</span>
+              </button>
+
+              <button
+                type="button"
+                id="quick-copy-code-btn"
+                onClick={() => copyInviteCode(selectedTeam.inviteCode, selectedTeam.id)}
+                className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition flex items-center gap-1.5"
+                title="Copy team invite code to clipboard"
+              >
+                {copiedState?.id === selectedTeam.id && copiedState?.type === 'code' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="font-bold text-emerald-700">Code Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Code: <strong className="font-mono">{selectedTeam.inviteCode}</strong></span>
+                  </>
+                )}
               </button>
 
               <button
@@ -853,51 +880,99 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
               </button>
             </div>
 
-            {/* Shareable Link Box */}
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
-                  Shareable Join Link
-                </span>
-                <span className="text-[10px] text-slate-500 font-mono">
-                  Code: <strong className="text-emerald-700">{selectedTeam.inviteCode}</strong>
-                </span>
-              </div>
-              <p className="text-xs text-slate-500">
-                Share this link or code with fellow coaches so they can view and log pitches for {selectedTeam.name}.
-              </p>
+            {/* Shareable Invite Code & Link Box */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-4">
+              {/* Option 1: Direct Invite Code */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <span>1. Team Invite Code</span>
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Enter directly in "Join Team"
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <div
+                    onClick={() => copyInviteCode(selectedTeam.inviteCode, selectedTeam.id)}
+                    className="flex-1 px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 cursor-pointer flex items-center justify-between transition group/code"
+                    title="Click to copy invite code"
+                  >
+                    <span className="font-mono text-base sm:text-lg font-black text-slate-900 tracking-wider">
+                      {selectedTeam.inviteCode}
+                    </span>
+                    <span className="text-[11px] text-slate-400 group-hover/code:text-slate-600 font-medium hidden sm:inline">
+                      Click to copy
+                    </span>
+                  </div>
 
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={`${window.location.origin}${window.location.pathname}?join=${selectedTeam.inviteCode}`}
-                  className="w-full text-xs px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-slate-700 font-mono select-all"
-                />
-                <button
-                  type="button"
-                  id="modal-copy-link-btn"
-                  onClick={() => copyShareLink(selectedTeam)}
-                  className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs shrink-0 flex items-center gap-1"
-                >
-                  {copiedCode === selectedTeam.id ? (
-                    <>
-                      <Check className="w-3.5 h-3.5" /> Copied!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" /> Copy
-                    </>
-                  )}
-                </button>
+                  <button
+                    type="button"
+                    id="modal-copy-code-btn"
+                    onClick={() => copyInviteCode(selectedTeam.inviteCode, selectedTeam.id)}
+                    className="px-4 py-2.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs shrink-0 flex items-center gap-1.5 transition"
+                  >
+                    {copiedState?.id === selectedTeam.id && copiedState?.type === 'code' ? (
+                      <>
+                        <Check className="w-4 h-4" />
+                        <span>Code Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4" />
+                        <span>Copy Code</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Option 2: Direct Shareable Link */}
+              <div className="space-y-1.5 pt-3 border-t border-slate-200/80">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">
+                    2. Direct Join URL Link
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    Opens app and auto-joins team
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={`${window.location.origin}${window.location.pathname}?join=${selectedTeam.inviteCode}`}
+                    className="w-full text-xs px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 font-mono select-all focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    id="modal-copy-link-btn"
+                    onClick={() => copyShareLink(selectedTeam)}
+                    className="px-3.5 py-2 text-xs font-bold rounded-lg bg-slate-800 hover:bg-slate-700 text-white shadow-xs shrink-0 flex items-center gap-1.5 transition"
+                  >
+                    {copiedState?.id === selectedTeam.id && copiedState?.type === 'link' ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Link Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Link className="w-3.5 h-3.5" />
+                        <span>Copy Link</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {/* Regenerate Link (Revoke old link) */}
-              <div className="pt-1 flex items-center justify-between">
+              <div className="pt-2 flex items-center justify-between border-t border-slate-200/60">
                 <span className="text-[11px] text-slate-400">
                   {selectedTeam.inviteCodeCreatedAt
-                    ? `Generated ${new Date(selectedTeam.inviteCodeCreatedAt).toLocaleDateString()}`
-                    : 'Active'}
+                    ? `Active code generated ${new Date(selectedTeam.inviteCodeCreatedAt).toLocaleDateString()}`
+                    : 'Active Code'}
                 </span>
                 {onRegenerateInviteLink && (
                   <button
@@ -906,7 +981,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     onClick={() => {
                       if (
                         confirm(
-                          'Revoke current invite link? Anyone with the old link or code will no longer be able to join.',
+                          'Revoke current invite link & code? Anyone with the old link or code will no longer be able to join.',
                         )
                       ) {
                         onRegenerateInviteLink(selectedTeam.id);
@@ -914,7 +989,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                     }}
                     className="text-xs text-amber-600 hover:text-amber-700 font-semibold underline"
                   >
-                    Regenerate Link (Revoke Old)
+                    Regenerate Code (Revoke Old)
                   </button>
                 )}
               </div>

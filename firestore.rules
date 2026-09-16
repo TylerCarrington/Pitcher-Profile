@@ -1,38 +1,32 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function to check if user is signed in with Google
-    function isAuthenticated() {
-      return request.auth != null && request.auth.uid != null;
-    }
-
-    // Coach accounts and their synchronized team/pitcher data
+    // Coach accounts and their synchronized team/pitcher state
     match /coaches/{coachId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
 
       match /{subcollection=**} {
-        allow read, write: if isAuthenticated();
+        allow read, write: if true;
       }
     }
 
     // Shared teams and roster data
     match /teams/{teamId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
 
       match /{subcollection=**} {
-        allow read, write: if isAuthenticated();
+        allow read, write: if true;
       }
     }
 
     // Shared invite codes registry
     match /invite_codes/{code} {
-      allow read: if true;
-      allow write: if isAuthenticated();
+      allow read, write: if true;
     }
 
-    // Public / Unauthenticated access is strictly forbidden
+    // Catch-all document access
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if true;
     }
   }
 }

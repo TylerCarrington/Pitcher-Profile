@@ -14,11 +14,38 @@ import {
   SafetyWarningFlag,
 } from './types';
 import { db, auth } from './firebase';
-import { doc, getDoc, setDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  onSnapshot,
+  Unsubscribe,
+} from 'firebase/firestore';
 
 const STORAGE_KEY = 'pitch_tracker_data_v2';
 const CURRENT_COACH_KEY = 'pitch_tracker_current_coach_v2';
 const AUTH_STATUS_KEY = 'pitch_tracker_auth_status_v2';
+
+export function extractCleanInviteCode(input: string): string {
+  if (!input) return '';
+  let cleaned = input.trim();
+  if (cleaned.includes('join=')) {
+    try {
+      const url = new URL(cleaned.startsWith('http') ? cleaned : `https://${cleaned}`);
+      cleaned = url.searchParams.get('join') || cleaned;
+    } catch (e) {
+      const match = cleaned.match(/join=([^&]+)/i);
+      if (match) cleaned = decodeURIComponent(match[1]);
+    }
+  }
+  // Strip any trailing slashes, quotes, URL query parameters or hash fragments
+  cleaned = cleaned.replace(/[?#&].*$/, '').replace(/['"]/g, '').trim().toUpperCase();
+  return cleaned;
+}
 
 interface AppData {
   coaches: Coach[];
@@ -129,42 +156,47 @@ function saveData(data: AppData, skipCloud = false) {
   }
 }
 
+export async function syncSingleTeamToCloud(team: Team, dataOverride?: AppData): Promise<void> {
+  if (!team || !team.id) return;
+  const data = dataOverride || loadData();
+  const teamPlayers = data.players.filter((p) => p.teamId === team.id);
+  const creator = data.coaches.find((c) => c.id === team.createdBy);
+  const cleanCode = team.inviteCode ? extractCleanInviteCode(team.inviteCode) : null;
+  const cleanCodeWithoutDash = cleanCode ? cleanCode.replace(/-/g, '') : null;
+
+  const payload = {
+    id: team.id,
+    name: team.name,
+    imageUrl: team.imageUrl || null,
+    createdBy: team.createdBy,
+    creatorEmail: creator?.email || null,
+    creatorName: creator?.name || null,
+    createdAt: team.createdAt,
+    memberCoachIds: team.memberCoachIds || [],
+    inviteCode: team.inviteCode,
+    inviteCodeCreatedAt: team.inviteCodeCreatedAt,
+    pitchRulePresetId: team.pitchRulePresetId || 'usa_pitch_smart',
+    players: teamPlayers,
+    lastUpdated: new Date().toISOString(),
+  };
+
+  try {
+    await setDoc(doc(db, 'teams', team.id), payload, { merge: true });
+    if (cleanCode) {
+      await setDoc(doc(db, 'invite_codes', cleanCode), payload, { merge: true });
+      if (cleanCodeWithoutDash && cleanCodeWithoutDash !== cleanCode) {
+        await setDoc(doc(db, 'invite_codes', cleanCodeWithoutDash), payload, { merge: true });
+      }
+    }
+  } catch (err) {
+    console.warn('Notice writing team/invite record to Firestore:', err);
+  }
+}
+
 async function syncTeamAndInvitesToFirestore(teams: Team[], players: Player[], coaches: Coach[]) {
-  if (!auth.currentUser && !getCurrentCoach()) return;
   for (const team of teams) {
     if (!team || !team.id) continue;
-    const teamPlayers = players.filter((p) => p.teamId === team.id);
-    const creator = coaches.find((c) => c.id === team.createdBy);
-    const cleanCode = team.inviteCode ? team.inviteCode.trim().toUpperCase() : null;
-    const cleanCodeWithoutDash = cleanCode ? cleanCode.replace(/-/g, '') : null;
-
-    const payload = {
-      id: team.id,
-      name: team.name,
-      imageUrl: team.imageUrl || null,
-      createdBy: team.createdBy,
-      creatorEmail: creator?.email || null,
-      creatorName: creator?.name || null,
-      createdAt: team.createdAt,
-      memberCoachIds: team.memberCoachIds || [],
-      inviteCode: team.inviteCode,
-      inviteCodeCreatedAt: team.inviteCodeCreatedAt,
-      pitchRulePresetId: team.pitchRulePresetId || 'usa_pitch_smart',
-      players: teamPlayers,
-      lastUpdated: new Date().toISOString(),
-    };
-
-    try {
-      await setDoc(doc(db, 'teams', team.id), payload, { merge: true });
-      if (cleanCode) {
-        await setDoc(doc(db, 'invite_codes', cleanCode), payload, { merge: true });
-        if (cleanCodeWithoutDash && cleanCodeWithoutDash !== cleanCode) {
-          await setDoc(doc(db, 'invite_codes', cleanCodeWithoutDash), payload, { merge: true });
-        }
-      }
-    } catch (err) {
-      console.warn('Notice syncing team invite record to Firestore:', err);
-    }
+    await syncSingleTeamToCloud(team, { coaches, teams, players, events: [], sessions: [], pitches: [] });
   }
 }
 
@@ -309,6 +341,8 @@ export function initCloudSync(coachEmail?: string, coachUid?: string): () => voi
             }
 
             saveData(merged, true); // Save locally without echoing back to cloud
+            // Ensure invite records are registered for joined/created teams
+            syncTeamAndInvitesToFirestore(merged.teams, merged.players, merged.coaches).catch(() => {});
             notifySyncStatus('synced');
           }
         } else {
@@ -496,6 +530,7 @@ export function saveTeam(teamData: {
 
   data.teams.push(newTeam);
   saveData(data);
+  syncSingleTeamToCloud(newTeam, data).catch(() => {});
   return newTeam;
 }
 
@@ -508,6 +543,7 @@ export function updateTeamPitchPreset(
   if (!team) return null;
   team.pitchRulePresetId = presetId;
   saveData(data);
+  syncSingleTeamToCloud(team, data).catch(() => {});
   return team;
 }
 
@@ -528,6 +564,7 @@ export function updateTeam(
   }
   
   saveData(data);
+  syncSingleTeamToCloud(team, data).catch(() => {});
   return team;
 }
 
@@ -550,6 +587,7 @@ export function regenerateTeamInvite(
   team.inviteCode = newCode;
   team.inviteCodeCreatedAt = new Date().toISOString();
   saveData(data);
+  syncSingleTeamToCloud(team, data).catch(() => {});
   return { success: true, newCode };
 }
 
@@ -568,14 +606,21 @@ export async function joinTeamByCode(
   coachId: string,
 ): Promise<{ success: boolean; team?: Team; message?: string }> {
   const data = loadData();
-  const cleanCode = codeOrId.trim().toUpperCase();
+  const cleanCode = extractCleanInviteCode(codeOrId);
   const cleanCodeWithoutDash = cleanCode.replace(/-/g, '');
+
+  if (!cleanCode) {
+    return {
+      success: false,
+      message: 'Please enter a valid invite code or share link.',
+    };
+  }
 
   let team = data.teams.find(
     (t) =>
-      t.inviteCode.toUpperCase() === cleanCode ||
-      t.id === codeOrId.trim() ||
-      t.inviteCode.replace(/-/g, '').toUpperCase() === cleanCodeWithoutDash,
+      (t.inviteCode && t.inviteCode.toUpperCase() === cleanCode) ||
+      t.id === cleanCode ||
+      (t.inviteCode && t.inviteCode.replace(/-/g, '').toUpperCase() === cleanCodeWithoutDash),
   );
 
   // If found in local store, ensure coach membership is registered
@@ -584,21 +629,41 @@ export async function joinTeamByCode(
       team.memberCoachIds.push(coachId);
       saveData(data);
     }
+    syncSingleTeamToCloud(team, data).catch(() => {});
     return { success: true, team };
   }
 
   // If not in local store, query cloud Firestore invite registry
   try {
-    let inviteSnap = await getDoc(doc(db, 'invite_codes', cleanCode));
-    if (!inviteSnap.exists() && cleanCode !== cleanCodeWithoutDash) {
-      inviteSnap = await getDoc(doc(db, 'invite_codes', cleanCodeWithoutDash));
+    let inviteDocSnap: any = await getDoc(doc(db, 'invite_codes', cleanCode));
+    if (!inviteDocSnap.exists() && cleanCode !== cleanCodeWithoutDash) {
+      inviteDocSnap = await getDoc(doc(db, 'invite_codes', cleanCodeWithoutDash));
     }
-    if (!inviteSnap.exists()) {
-      inviteSnap = await getDoc(doc(db, 'teams', codeOrId.trim()));
+    if (!inviteDocSnap.exists()) {
+      inviteDocSnap = await getDoc(doc(db, 'teams', cleanCode));
     }
 
-    if (inviteSnap.exists()) {
-      const remote = inviteSnap.data() as any;
+    // Fallback: Query collection by inviteCode field
+    if (!inviteDocSnap.exists()) {
+      try {
+        const q1 = query(collection(db, 'teams'), where('inviteCode', '==', cleanCode));
+        const q1Snap = await getDocs(q1);
+        if (!q1Snap.empty) {
+          inviteDocSnap = q1Snap.docs[0];
+        } else if (cleanCode !== cleanCodeWithoutDash) {
+          const q2 = query(collection(db, 'teams'), where('inviteCode', '==', cleanCodeWithoutDash));
+          const q2Snap = await getDocs(q2);
+          if (!q2Snap.empty) {
+            inviteDocSnap = q2Snap.docs[0];
+          }
+        }
+      } catch (qErr) {
+        console.warn('Collection query fallback notice:', qErr);
+      }
+    }
+
+    if (inviteDocSnap && inviteDocSnap.exists()) {
+      const remote = inviteDocSnap.data() as any;
       if (remote && remote.id && remote.name) {
         const teamRecord: Team = {
           id: remote.id,

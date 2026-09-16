@@ -9,6 +9,7 @@ import {
   X,
   Users,
   Loader2,
+  Copy,
 } from 'lucide-react';
 import { PITCH_RULE_PRESETS } from '../utils/pitchSmart';
 import { ImageUploadInput } from './ImageUploadInput';
@@ -44,6 +45,15 @@ export const TeamSwitcher: React.FC<TeamSwitcherProps> = ({
   const [joinError, setJoinError] = useState<string | null>(null);
   const [joinSuccess, setJoinSuccess] = useState<string | null>(null);
   const [isJoining, setIsJoining] = useState(false);
+  const [copiedTeamCodeId, setCopiedTeamCodeId] = useState<string | null>(null);
+
+  const handleCopyCode = (e: React.MouseEvent, code: string, teamId: string) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(code).then(() => {
+      setCopiedTeamCodeId(teamId);
+      setTimeout(() => setCopiedTeamCodeId(null), 2000);
+    });
+  };
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -192,7 +202,18 @@ export const TeamSwitcher: React.FC<TeamSwitcherProps> = ({
                         <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-normal mt-0.5">
                           <span>{isCreator ? 'Head Coach' : 'Member'}</span>
                           <span>&bull;</span>
-                          <span className="font-mono">{team.inviteCode}</span>
+                          <span
+                            onClick={(e) => handleCopyCode(e, team.inviteCode, team.id)}
+                            title="Click to copy team invite code"
+                            className="font-mono text-slate-600 hover:text-emerald-600 hover:bg-emerald-50 px-1 py-0.5 rounded transition flex items-center gap-1"
+                          >
+                            <span>{team.inviteCode}</span>
+                            {copiedTeamCodeId === team.id ? (
+                              <Check className="w-2.5 h-2.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-2.5 h-2.5 opacity-60 hover:opacity-100" />
+                            )}
+                          </span>
                         </div>
                       </div>
                     </div>

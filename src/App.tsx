@@ -473,6 +473,7 @@ export default function App() {
             onBackToEvents={() => setSelectedEventId(null)}
             onReopenEvent={() => handleReopenEvent(selectedEvent.id)}
             onDeleteEvent={() => handleDeleteEvent(selectedEvent.id)}
+            onSaveNotes={handleSaveNotes}
           />
         </div>
       );

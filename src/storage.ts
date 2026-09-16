@@ -136,6 +136,7 @@ export function getSyncStatus(): { status: SyncStatus; lastSync: string | null }
 let activeCloudUnsubscribe: Unsubscribe | null = null;
 let currentCloudDocId: string | null = null;
 let isPushingToCloud = false;
+let isInitialSyncComplete = false;
 let cloudSaveTimer: any = null;
 
 function getCoachDocId(coach?: Coach | null): string | null {
@@ -273,6 +274,11 @@ async function syncTeamAndInvitesToFirestore(teams: Team[], players?: Player[], 
 }
 
 async function pushToFirestoreDebounced(data: AppData) {
+  if (!isInitialSyncComplete) {
+    // Skip saving back to Firestore during the initial sync loading phase
+    return;
+  }
+
   if (cloudSaveTimer) {
     clearTimeout(cloudSaveTimer);
   }
@@ -516,6 +522,7 @@ export function initCloudSync(coachEmail?: string, coachUid?: string): () => voi
   }
 
   currentCloudDocId = docId;
+  isInitialSyncComplete = false;
   notifySyncStatus('syncing');
 
   // Immediately initialize listeners for any locally known teams
@@ -530,6 +537,7 @@ export function initCloudSync(coachEmail?: string, coachUid?: string): () => voi
     activeCloudUnsubscribe = onSnapshot(
       coachDocRef,
       (snapshot) => {
+        isInitialSyncComplete = true;
         if (snapshot.exists()) {
           const remoteData = snapshot.data();
           if (!isPushingToCloud) {
@@ -585,6 +593,7 @@ export function initCloudSync(coachEmail?: string, coachUid?: string): () => voi
       (error) => {
         console.warn('Firestore snapshot listener offline or permissions pending:', error);
         notifySyncStatus('offline');
+        isInitialSyncComplete = true;
       },
     );
   } catch (e) {

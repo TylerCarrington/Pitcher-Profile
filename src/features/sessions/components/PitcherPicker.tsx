@@ -24,6 +24,7 @@ export interface PitcherPickerProps {
   activePitcher: Player | null;
   activeSession: PitcherSession | null;
   onStartSession: (pitcherId: string) => void;
+  onEndSession?: (sessionId: string) => void;
   onReopenSession?: (sessionId: string) => void;
   onDeleteSession?: (sessionId: string) => void;
   onBackToTeam: () => void;
@@ -38,6 +39,7 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
   activePitcher,
   activeSession,
   onStartSession,
+  onEndSession,
   onReopenSession,
   onDeleteSession,
   onBackToTeam,
@@ -45,10 +47,58 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
   onClosePicker,
 }) => {
   const [sessionToDelete, setSessionToDelete] = useState<PitcherSession | null>(null);
+  const [pendingSwitch, setPendingSwitch] = useState<{
+    player: Player;
+    existingSessionId?: string;
+  } | null>(null);
+
   const { selectedTeam } = useTeam();
   const teamPresetId = selectedTeam?.pitchRulePresetId || 'usa_pitch_smart';
 
   const isGame = event?.type === 'game';
+
+  const handleSelectPitcher = (player: Player, existingSessionId?: string) => {
+    // If selecting currently active pitcher, switch/resume directly without modal
+    if (activePitcher && activePitcher.id === player.id) {
+      if (onClosePicker) onClosePicker();
+      return;
+    }
+
+    // In Game Mode, if there is an active session with a different pitcher, ask to end current session first
+    if (
+      isGame &&
+      activeSession &&
+      activeSession.status === 'active' &&
+      activePitcher &&
+      activePitcher.id !== player.id
+    ) {
+      setPendingSwitch({ player, existingSessionId });
+      return;
+    }
+
+    executeSwitch(player, existingSessionId);
+  };
+
+  const executeSwitch = (player: Player, existingSessionId?: string) => {
+    if (existingSessionId && onReopenSession) {
+      onReopenSession(existingSessionId);
+    } else {
+      onStartSession(player.id);
+    }
+    if (onClosePicker) onClosePicker();
+  };
+
+  const handleConfirmSwitch = () => {
+    if (!pendingSwitch) return;
+    const { player, existingSessionId } = pendingSwitch;
+
+    if (activeSession && activeSession.status === 'active' && onEndSession) {
+      onEndSession(activeSession.id);
+    }
+
+    executeSwitch(player, existingSessionId);
+    setPendingSwitch(null);
+  };
 
   return (
     <div id="pitcher-picker-screen" className="w-full max-w-4xl mx-auto px-4 py-6 space-y-6 animate-in fade-in">
@@ -113,14 +163,7 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
                   key={player.id}
                   id={`select-pitcher-${player.id}`}
                   type="button"
-                  onClick={() => {
-                    if (activePitcher && activePitcher.id === player.id && onClosePicker) {
-                      onClosePicker();
-                    } else {
-                      onStartSession(player.id);
-                      if (onClosePicker) onClosePicker();
-                    }
-                  }}
+                  onClick={() => handleSelectPitcher(player, playerSession?.id)}
                   className={`p-4 rounded-xl border-2 text-left transition flex items-center justify-between gap-3 group cursor-pointer ${
                     isPlayerActive
                       ? 'border-blue-200 bg-blue-50/10 hover:border-blue-500 hover:bg-blue-50/20'
@@ -342,8 +385,7 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
                           type="button"
                           id={`switch-session-${session.id}`}
                           onClick={() => {
-                            onStartSession(session.pitcherId);
-                            if (onClosePicker) onClosePicker();
+                            if (pitcher) handleSelectPitcher(pitcher, session.id);
                           }}
                           className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition shadow-xs cursor-pointer active:scale-95"
                         >
@@ -356,8 +398,7 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
                               type="button"
                               id={`reopen-session-${session.id}`}
                               onClick={() => {
-                                onReopenSession(session.id);
-                                if (onClosePicker) onClosePicker();
+                                if (pitcher) handleSelectPitcher(pitcher, session.id);
                               }}
                               className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
                               title="Reopen ended session"
@@ -385,6 +426,58 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Pitcher Switch Modal for Games */}
+      {pendingSwitch && (
+        <div
+          id="confirm-switch-pitcher-modal"
+          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                <Users className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-white truncate">
+                  End Current Session & Switch Pitcher?
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Games track one active pitcher on the mound at a time
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-800/80 rounded-xl p-3.5 border border-slate-700/60 text-xs text-slate-300 space-y-2">
+              <p>
+                Do you want to end <strong className="text-white">{activePitcher?.name || 'the current pitcher'}</strong>'s session and start a new session with <strong className="text-emerald-400">{pendingSwitch.player.name}</strong>?
+              </p>
+              <p className="text-[11px] text-slate-400">
+                {activePitcher?.name || 'Current pitcher'}'s stats will be preserved in event logs.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                id="cancel-switch-pitcher-btn"
+                onClick={() => setPendingSwitch(null)}
+                className="px-3.5 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                id="confirm-switch-pitcher-btn"
+                onClick={handleConfirmSwitch}
+                className="px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition cursor-pointer active:scale-95"
+              >
+                End Session & Start {pendingSwitch.player.name}
+              </button>
+            </div>
           </div>
         </div>
       )}

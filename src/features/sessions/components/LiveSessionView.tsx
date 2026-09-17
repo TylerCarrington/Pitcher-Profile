@@ -179,6 +179,7 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
             onStartSession(pitcherId);
             setShowPitcherPicker(false);
           }}
+          onEndSession={onEndSession}
           onReopenSession={(sessionId) => {
             onReopenSession(sessionId);
             setShowPitcherPicker(false);

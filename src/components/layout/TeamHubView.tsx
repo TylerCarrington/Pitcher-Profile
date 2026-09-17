@@ -8,8 +8,7 @@ import { useAuth } from '../../features/auth/hooks/useAuth';
 
 export const TeamHubView: React.FC = () => {
   const { currentCoach } = useAuth();
-  const { selectedTeam, teamPlayers, teamEvents } = useTeam();
-  const [activeTab, setActiveTab] = useState<'events' | 'roster'>('roster');
+  const { selectedTeam, teamPlayers, teamEvents, activeTab, setActiveTab } = useTeam();
 
   if (!selectedTeam) {
     return (

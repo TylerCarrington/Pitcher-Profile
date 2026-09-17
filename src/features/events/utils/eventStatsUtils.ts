@@ -33,7 +33,7 @@ export function aggregateEventPitcherStats(
     };
     pitcherStatsMap.set(session.pitcherId, {
       pitcher,
-      pitchesThrown: session.uncountedPitches || 0,
+      pitchesThrown: 0,
       balls: 0,
       strikes: 0,
       pitches: [],

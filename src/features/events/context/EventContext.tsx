@@ -25,7 +25,7 @@ import {
   reopenPitcherSession,
   deletePitcherSession,
   updateSessionNotes,
-  updateSessionUncountedPitches,
+  updateSessionUncountedPitches as storageUpdateSessionUncountedPitches,
   getPitchesForSession,
   getPitchesForEvent,
   addPitchToSession,
@@ -35,6 +35,7 @@ import {
   subscribeToStore,
 } from '../../../storage';
 import { useAuth } from '../../auth/hooks/useAuth';
+import { useTeam } from '../../teams/hooks/useTeam';
 
 export interface EventContextType {
   selectedEventId: string | null;
@@ -88,6 +89,7 @@ interface EventProviderProps {
 
 export const EventProvider: React.FC<EventProviderProps> = ({ children }) => {
   const { currentCoach } = useAuth();
+  const { setActiveTab } = useTeam();
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [dataVersion, setDataVersion] = useState(0);
@@ -153,8 +155,9 @@ export const EventProvider: React.FC<EventProviderProps> = ({ children }) => {
       setActiveSessionId(active ? active.id : null);
     } else {
       setActiveSessionId(null);
+      setActiveTab('events');
     }
-  }, []);
+  }, [setActiveTab]);
 
   const createEvent = useCallback(
     (input: {
@@ -299,10 +302,10 @@ export const EventProvider: React.FC<EventProviderProps> = ({ children }) => {
 
   const updateSessionUncountedPitches = useCallback(
     (sessionId: string, count: number) => {
-      updateSessionNotes(sessionId, currentCoach?.id || '', ''); // ensure session exists
+      storageUpdateSessionUncountedPitches(sessionId, count);
       refreshEventData();
     },
-    [currentCoach, refreshEventData],
+    [refreshEventData],
   );
 
   const updateOuts = useCallback(

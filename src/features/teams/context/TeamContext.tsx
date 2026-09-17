@@ -47,6 +47,8 @@ export interface TeamContextType {
   }) => Player;
   deletePlayer: (playerId: string) => void;
   refreshTeamData: () => void;
+  activeTab: 'events' | 'roster';
+  setActiveTab: (tab: 'events' | 'roster') => void;
 }
 
 export const TeamContext = createContext<TeamContextType | undefined>(undefined);
@@ -61,6 +63,7 @@ export const TeamProvider: React.FC<TeamProviderProps> = ({ children }) => {
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(() => {
     return localStorage.getItem('pitch_tracker_last_team_id') || null;
   });
+  const [activeTab, setActiveTab] = useState<'events' | 'roster'>('roster');
 
   const refreshTeamData = useCallback(() => {
     if (!currentCoach) {
@@ -268,6 +271,8 @@ export const TeamProvider: React.FC<TeamProviderProps> = ({ children }) => {
         savePlayer,
         deletePlayer,
         refreshTeamData,
+        activeTab,
+        setActiveTab,
       }}
     >
       {children}

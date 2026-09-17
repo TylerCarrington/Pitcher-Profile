@@ -93,7 +93,7 @@ export const PitcherReviewCard: React.FC<PitcherReviewCardProps> = ({
             <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
               <span>{strikePercent}% Strike Rate</span>
               <span>&bull;</span>
-              {isBullpen && uncountedPitches > 0 ? (
+              {uncountedPitches > 0 ? (
                 <span>
                   {pitchesThrown} charted, {totalPitches} total
                 </span>
@@ -188,7 +188,7 @@ export const PitcherReviewCard: React.FC<PitcherReviewCardProps> = ({
             </p>
           </div>
 
-          {isBullpen && session && (
+          {session && (
             <BullpenAdjustmentPanel
               session={session}
               pitchesThrown={pitchesThrown}

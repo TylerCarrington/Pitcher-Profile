@@ -517,10 +517,12 @@ export function calculatePlayerRestEligibility(params: {
     if (!session) continue;
 
     const sessionPitches = pitches.filter((p) => p.sessionId === session.id);
-    if (sessionPitches.length > 0) {
+    const uncounted = session.uncountedPitches || 0;
+    const totalPitches = sessionPitches.length + uncounted;
+    if (totalPitches > 0) {
       eventPitchCounts.push({
         event,
-        pitchCount: sessionPitches.length,
+        pitchCount: totalPitches,
         date: eventDate,
       });
     }

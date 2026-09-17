@@ -1496,14 +1496,6 @@ export function getActiveSessionForEvent(eventId: string): PitcherSession | unde
 
 export function startPitcherSession(eventId: string, pitcherId: string): PitcherSession {
   const data = loadData();
-  // Complete any currently active session in this event
-  data.sessions.forEach((s) => {
-    if (s.eventId === eventId && s.status === 'active') {
-      s.status = 'completed';
-      s.endedAt = new Date().toISOString();
-    }
-  });
-
   const newSession: PitcherSession = {
     id: `session_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     eventId,
@@ -1523,14 +1515,6 @@ export function reopenPitcherSession(sessionId: string): PitcherSession | undefi
   const data = loadData();
   const session = data.sessions.find((s) => s.id === sessionId);
   if (!session) return undefined;
-
-  // Complete any other active session in this event
-  data.sessions.forEach((s) => {
-    if (s.eventId === session.eventId && s.id !== sessionId && s.status === 'active') {
-      s.status = 'completed';
-      s.endedAt = new Date().toISOString();
-    }
-  });
 
   session.status = 'active';
   session.endedAt = undefined;
@@ -1580,6 +1564,16 @@ export function updateSessionNotes(sessionId: string, coachId: string, notes: st
       session.coachNotes = {};
     }
     session.coachNotes[coachId] = notes;
+    saveData(data);
+    syncTeamBySessionId(sessionId, data);
+  }
+}
+
+export function updateSessionUncountedPitches(sessionId: string, count: number): void {
+  const data = loadData();
+  const session = data.sessions.find((s) => s.id === sessionId);
+  if (session) {
+    session.uncountedPitches = Math.max(0, count);
     saveData(data);
     syncTeamBySessionId(sessionId, data);
   }

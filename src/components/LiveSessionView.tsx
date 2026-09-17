@@ -98,7 +98,6 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
   const [showEndEventConfirm, setShowEndEventConfirm] = useState(false);
   const [sessionToDelete, setSessionToDelete] = useState<PitcherSession | null>(null);
   const [showFastEntryModal, setShowFastEntryModal] = useState(false);
-  const [pendingSwitchPitcher, setPendingSwitchPitcher] = useState<Player | null>(null);
 
   // Responsive strike zone grid sizing for mobile single-screen fit
   const [isMobile, setIsMobile] = useState(() =>
@@ -269,63 +268,97 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-              {teamPlayers.map((player) => (
-                <button
-                  key={player.id}
-                  id={`select-pitcher-${player.id}`}
-                  type="button"
-                  onClick={() => {
-                    if (activeSession && activePitcher && activePitcher.id !== player.id) {
-                      setPendingSwitchPitcher(player);
-                    } else {
+              {teamPlayers.map((player) => {
+                const playerSession = allEventSessions.find((s) => s.pitcherId === player.id);
+                const isPlayerActive = playerSession?.status === 'active';
+                const isPlayerCompleted = playerSession?.status === 'completed';
+
+                return (
+                  <button
+                    key={player.id}
+                    id={`select-pitcher-${player.id}`}
+                    type="button"
+                    onClick={() => {
                       if (activePitcher && activePitcher.id === player.id) {
                         setShowPitcherPicker(false);
                       } else {
                         onStartSession(player.id);
                         setShowPitcherPicker(false);
                       }
-                    }
-                  }}
-                  className="p-4 rounded-xl border-2 border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40 text-left transition flex items-center justify-between gap-3 group"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="relative">
-                      {player.imageUrl ? (
-                        <img
-                          src={player.imageUrl}
-                          alt={player.name}
-                          className="w-12 h-12 rounded-full object-cover border-2 border-slate-200 group-hover:border-emerald-500 transition"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-slate-100 border-2 border-slate-200 group-hover:border-emerald-500 flex items-center justify-center font-black text-slate-700 text-base">
-                          #{player.jerseyNumber}
-                        </div>
-                      )}
-                      <span className="absolute -bottom-1 -right-1 bg-slate-900 text-emerald-400 font-bold text-[9px] px-1 rounded-full border border-white">
-                        #{player.jerseyNumber}
-                      </span>
-                    </div>
-
-                    <div className="min-w-0">
-                      <h4 className="font-bold text-sm text-slate-900 group-hover:text-emerald-800 transition truncate">
-                        {player.name}
-                      </h4>
-                      <p className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
-                        <span>{player.throws || 'R'}HP • #{player.jerseyNumber}</span>
-                        {player.seasonAge && (
-                          <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-semibold text-[10px]">
-                            {player.seasonAge}U
-                          </span>
+                    }}
+                    className={`p-4 rounded-xl border-2 text-left transition flex items-center justify-between gap-3 group ${
+                      isPlayerActive
+                        ? 'border-blue-200 bg-blue-50/10 hover:border-blue-500 hover:bg-blue-50/20'
+                        : isPlayerCompleted
+                        ? 'border-slate-200 bg-slate-50/40 hover:border-slate-400'
+                        : 'border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/40'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="relative">
+                        {player.imageUrl ? (
+                          <img
+                            src={player.imageUrl}
+                            alt={player.name}
+                            className={`w-12 h-12 rounded-full object-cover border-2 transition ${
+                              isPlayerActive ? 'border-blue-500' : 'border-slate-200 group-hover:border-emerald-500'
+                            }`}
+                          />
+                        ) : (
+                          <div className={`w-12 h-12 rounded-full border-2 flex items-center justify-center font-black text-base transition ${
+                            isPlayerActive
+                              ? 'bg-blue-100 border-blue-500 text-blue-700'
+                              : 'bg-slate-100 border-slate-200 group-hover:border-emerald-500 text-slate-700'
+                          }`}>
+                            #{player.jerseyNumber}
+                          </div>
                         )}
-                      </p>
-                    </div>
-                  </div>
+                        <span className={`absolute -bottom-1 -right-1 font-bold text-[9px] px-1 rounded-full border border-white text-white ${
+                          isPlayerActive ? 'bg-blue-600' : 'bg-slate-900'
+                        }`}>
+                          #{player.jerseyNumber}
+                        </span>
+                      </div>
 
-                  <div className="w-8 h-8 rounded-full bg-slate-100 group-hover:bg-emerald-500 group-hover:text-white flex items-center justify-center text-slate-400 transition shrink-0">
-                    <ChevronRight className="w-4 h-4" />
-                  </div>
-                </button>
-              ))}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className={`font-bold text-sm truncate transition ${
+                            isPlayerActive ? 'text-blue-900' : 'text-slate-900 group-hover:text-emerald-800'
+                          }`}>
+                            {player.name}
+                          </h4>
+                          {isPlayerActive && (
+                            <span className="px-1.5 py-0.2 rounded bg-blue-100 text-blue-800 font-extrabold text-[9px] uppercase tracking-wider animate-pulse">
+                              Active
+                            </span>
+                          )}
+                          {isPlayerCompleted && (
+                            <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 font-bold text-[9px] uppercase tracking-wider">
+                              Done
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap mt-0.5">
+                          <span>{player.throws || 'R'}HP • #{player.jerseyNumber}</span>
+                          {player.seasonAge && (
+                            <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-semibold text-[10px]">
+                              {player.seasonAge}U
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center transition shrink-0 ${
+                      isPlayerActive
+                        ? 'bg-blue-100 text-blue-600 group-hover:bg-blue-500 group-hover:text-white'
+                        : 'bg-slate-100 text-slate-400 group-hover:bg-emerald-500 group-hover:text-white'
+                    }`}>
+                      <ChevronRight className="w-4 h-4" />
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -362,6 +395,7 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
               {allEventSessions.map((session) => {
                 const pitcher = teamPlayers.find((p) => p.id === session.pitcherId);
                 const isCurrentActive = activeSession?.id === session.id;
+                const isSessionActive = session.status === 'active';
 
                 return (
                   <div
@@ -379,12 +413,16 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
                             {pitcher?.name || 'Pitcher'}
                           </span>
                           {isCurrentActive ? (
-                            <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                              Tracking Now
+                            </span>
+                          ) : isSessionActive ? (
+                            <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold">
                               Active
                             </span>
                           ) : (
-                            <span className="px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 text-[10px] font-semibold">
-                              Ended
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-semibold">
+                              Completed
                             </span>
                           )}
                         </div>
@@ -399,9 +437,21 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
                         <button
                           type="button"
                           onClick={() => setShowPitcherPicker(false)}
-                          className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white"
+                          className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
                         >
-                          Resume Tracking
+                          Resume View
+                        </button>
+                      ) : isSessionActive ? (
+                        <button
+                          type="button"
+                          id={`switch-session-${session.id}`}
+                          onClick={() => {
+                            onStartSession(session.pitcherId);
+                            setShowPitcherPicker(false);
+                          }}
+                          className="px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition shadow-xs"
+                        >
+                          Switch to Pitcher
                         </button>
                       ) : (
                         <>
@@ -413,10 +463,10 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
                                 onReopenSession(session.id);
                                 setShowPitcherPicker(false);
                               }}
-                              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition flex items-center gap-1"
+                              className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition flex items-center gap-1 shadow-xs"
                               title="Reopen ended session"
                             >
-                              <RotateCcw className="w-3 h-3 text-emerald-600" />
+                              <RotateCcw className="w-3 h-3 text-slate-500" />
                               <span>Reopen</span>
                             </button>
                           )}
@@ -533,55 +583,6 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
             </div>
           </div>
         )}
-
-        {/* Switch Pitcher Warning Modal (Picker Screen) */}
-        {pendingSwitchPitcher && activePitcher && activeSession && (
-          <div
-            id="confirm-switch-pitcher-picker-modal"
-            className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
-          >
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
-                  <AlertCircle className="w-5 h-5" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-base font-bold text-white">End Current Session?</h3>
-                  <p className="text-xs text-slate-400">Active: {activePitcher.name}</p>
-                </div>
-              </div>
-
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Selecting <strong className="text-white">{pendingSwitchPitcher.name}</strong> will automatically end the current active session with <strong className="text-white">{activePitcher.name}</strong>. This will finalize {activePitcher.name}'s statistics and start a brand-new session for {pendingSwitchPitcher.name}.
-              </p>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  id="cancel-switch-pitcher-btn"
-                  onClick={() => setPendingSwitchPitcher(null)}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  id="confirm-switch-pitcher-btn"
-                  onClick={() => {
-                    const targetPitcherId = pendingSwitchPitcher.id;
-                    setPendingSwitchPitcher(null);
-                    onEndSession(activeSession.id);
-                    onStartSession(targetPitcherId);
-                    setShowPitcherPicker(false);
-                  }}
-                  className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-white shadow-xs transition"
-                >
-                  End &amp; Switch
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -610,6 +611,9 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
         onEndSession={() => setShowEndSessionConfirm(true)}
         onEndEvent={() => setShowEndEventConfirm(true)}
         onBackToTeam={() => setShowPitcherPicker(true)}
+        teamPlayers={teamPlayers}
+        allEventSessions={allEventSessions || []}
+        onStartSession={onStartSession}
       />
 
       {/* Main Recording Workspace */}
@@ -943,55 +947,6 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
                 className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-slate-950 text-white font-semibold text-xs shadow transition active:scale-[0.99]"
               >
                 Got it
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Switch Pitcher Warning Modal */}
-      {pendingSwitchPitcher && activePitcher && activeSession && (
-        <div
-          id="confirm-switch-pitcher-modal"
-          className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
-        >
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-sm w-full p-5 shadow-2xl text-left space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-base font-bold text-white">End Current Session?</h3>
-                <p className="text-xs text-slate-400">Active: {activePitcher.name}</p>
-              </div>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Selecting <strong className="text-white">{pendingSwitchPitcher.name}</strong> will automatically end the current active session with <strong className="text-white">{activePitcher.name}</strong>. This will finalize {activePitcher.name}'s statistics and start a brand-new session for {pendingSwitchPitcher.name}.
-            </p>
-
-            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
-              <button
-                type="button"
-                id="cancel-switch-pitcher-btn"
-                onClick={() => setPendingSwitchPitcher(null)}
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                id="confirm-switch-pitcher-btn"
-                onClick={() => {
-                  const targetPitcherId = pendingSwitchPitcher.id;
-                  setPendingSwitchPitcher(null);
-                  onEndSession(activeSession.id);
-                  onStartSession(targetPitcherId);
-                  setShowPitcherPicker(false);
-                }}
-                className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 text-white shadow-xs transition"
-              >
-                End &amp; Switch
               </button>
             </div>
           </div>

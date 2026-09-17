@@ -152,6 +152,7 @@ export interface PitcherSession {
   // Notes are private per coach: coachId -> private note string
   coachNotes: Record<string, string>;
   warningFlags?: SafetyWarningFlag[]; // Phase 3 flagged warnings
+  uncountedPitches?: number;
 }
 
 export interface PitcherEventSummary {

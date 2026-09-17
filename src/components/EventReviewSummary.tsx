@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BaseballEvent, Player, Pitch, Team } from '../types';
+import { BaseballEvent, Player, Pitch, Team, PitcherSession } from '../types';
 import { calculateGamePitchingMetrics, getSessionsForEvent, getAllCoaches, getCurrentCoach } from '../storage';
 import { PitchSmartBadge } from './PitchSmartBadge';
 import { StrikeZoneHeatmap } from './StrikeZoneHeatmap';
@@ -31,10 +31,12 @@ interface EventReviewSummaryProps {
   team: Team;
   players: Player[];
   allEventPitches: Pitch[];
+  allEventSessions: PitcherSession[];
   onBackToEvents: () => void;
   onReopenEvent: () => void;
   onDeleteEvent?: () => void;
   onSaveNotes: (sessionId: string, coachId: string, notes: string) => void;
+  onUpdateSessionUncountedPitches: (sessionId: string, count: number) => void;
 }
 
 interface PitcherNotesEditorProps {
@@ -223,15 +225,17 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
   team,
   players,
   allEventPitches,
+  allEventSessions,
   onBackToEvents,
   onReopenEvent,
   onDeleteEvent,
   onSaveNotes,
+  onUpdateSessionUncountedPitches,
 }) => {
   const [expandedPitcherId, setExpandedPitcherId] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
-  // Group pitches by pitcher
+  // Group pitches by pitcher, pre-populating from sessions
   const pitcherStatsMap = new Map<
     string,
     {
@@ -240,8 +244,29 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
       balls: number;
       strikes: number;
       pitches: Pitch[];
+      session?: PitcherSession;
     }
   >();
+
+  // Ensure all sessions have a slot in the map
+  allEventSessions.forEach((session) => {
+    const pitcher = players.find((pl) => pl.id === session.pitcherId) || {
+      id: session.pitcherId,
+      name: 'Unknown Pitcher',
+      jerseyNumber: '?',
+      teamId: team.id,
+      seasonAge: 11,
+      createdAt: new Date().toISOString(),
+    };
+    pitcherStatsMap.set(session.pitcherId, {
+      pitcher,
+      pitchesThrown: 0,
+      balls: 0,
+      strikes: 0,
+      pitches: [],
+      session,
+    });
+  });
 
   allEventPitches.forEach((p) => {
     let stat = pitcherStatsMap.get(p.pitcherId);
@@ -254,12 +279,21 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
         seasonAge: 11,
         createdAt: new Date().toISOString(),
       };
+      const fallbackSession: PitcherSession = {
+        id: p.sessionId,
+        eventId: event.id,
+        pitcherId: p.pitcherId,
+        status: 'completed',
+        startedAt: p.timestamp,
+        coachNotes: {},
+      };
       stat = {
         pitcher,
         pitchesThrown: 0,
         balls: 0,
         strikes: 0,
         pitches: [],
+        session: fallbackSession,
       };
       pitcherStatsMap.set(p.pitcherId, stat);
     }
@@ -276,7 +310,13 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
 
   const pitchersList = Array.from(pitcherStatsMap.values());
 
-  const totalEventPitches = allEventPitches.length;
+  const totalChartedPitches = allEventPitches.length;
+  const totalUncountedPitches = pitchersList.reduce(
+    (sum, stat) => sum + (stat.session?.uncountedPitches || 0),
+    0,
+  );
+  const totalOverallPitches = totalChartedPitches + totalUncountedPitches;
+
   const formattedDate = new Date(event.scheduledAt).toLocaleDateString(undefined, {
     weekday: 'short',
     month: 'short',
@@ -363,7 +403,14 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
           <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 flex items-center gap-4 shrink-0">
             <div className="text-center">
               <div className="text-[10px] uppercase font-bold text-slate-400">Total Pitches</div>
-              <div className="text-xl font-black text-slate-900">{totalEventPitches}</div>
+              <div className="text-xl font-black text-slate-900">
+                {event.type === 'bullpen' ? totalOverallPitches : totalChartedPitches}
+              </div>
+              {event.type === 'bullpen' && totalUncountedPitches > 0 && (
+                <div className="text-[9px] text-slate-500 font-medium">
+                  {totalChartedPitches} ch + {totalUncountedPitches} unc
+                </div>
+              )}
             </div>
             <div className="h-8 w-px bg-slate-200" />
             <div className="text-center">
@@ -394,7 +441,9 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
           </div>
         ) : (
           <div className="divide-y divide-slate-200">
-            {pitchersList.map(({ pitcher, pitchesThrown, balls, strikes, pitches }) => {
+            {pitchersList.map(({ pitcher, pitchesThrown, balls, strikes, pitches, session }) => {
+              const uncountedPitches = session?.uncountedPitches || 0;
+              const totalPitches = pitchesThrown + uncountedPitches;
               const strikePercent =
                 pitchesThrown > 0 ? Math.round((strikes / pitchesThrown) * 100) : 0;
               const isExpanded = expandedPitcherId === pitcher.id;
@@ -440,7 +489,13 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
                         <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5">
                           <span>{strikePercent}% Strike Rate</span>
                           <span>&bull;</span>
-                          <span>{pitchesThrown} Pitches</span>
+                          {event.type === 'bullpen' ? (
+                            <span className="font-semibold text-slate-700">
+                              {pitchesThrown} charted, {totalPitches} total
+                            </span>
+                          ) : (
+                            <span>{pitchesThrown} Pitches</span>
+                          )}
                           {event.type === 'game' && (
                             <>
                               <span>&bull;</span>
@@ -457,7 +512,7 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
                     <div className="flex flex-wrap items-center gap-3 sm:ml-auto">
                       {/* Pitch Smart Safety Badge */}
                       <PitchSmartBadge
-                        pitchCount={pitchesThrown}
+                        pitchCount={totalPitches}
                         seasonAge={pitcher.seasonAge || 11}
                       />
 
@@ -487,7 +542,7 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
                         <div className="flex items-center gap-3 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
                           <div className="text-center">
                             <div className="text-[10px] uppercase font-bold text-slate-400">Total</div>
-                            <div className="font-mono font-bold text-slate-900">{pitchesThrown}</div>
+                            <div className="font-mono font-bold text-slate-900">{totalPitches}</div>
                           </div>
                           <div className="h-5 w-px bg-slate-200" />
                           <div className="text-center">
@@ -526,6 +581,69 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = ({
                           Interactive breakdown of pitch locations, outcomes, and arsenal mix for this event.
                         </p>
                       </div>
+
+                      {event.type === 'bullpen' && session && (
+                        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div>
+                              <h5 className="font-extrabold text-[10px] tracking-wider text-slate-400 uppercase">
+                                Manual Pitch Count Adjustment (Bullpen Only)
+                              </h5>
+                              <p className="text-xs text-slate-500 leading-relaxed max-w-lg mt-0.5">
+                                Add uncharted pitches (e.g. warm-ups or side bullpen throws while charting other pitchers). These feed directly into safety, limit, and rest calculations, but won't fabricate individual location logs.
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                id={`decrement-uncounted-${session.id}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const current = session.uncountedPitches || 0;
+                                  if (current > 0) {
+                                    onUpdateSessionUncountedPitches(session.id, current - 1);
+                                  }
+                                }}
+                                className="w-8 h-8 rounded-lg border border-slate-200 hover:bg-slate-50 flex items-center justify-center font-bold text-slate-700 transition"
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                id={`input-uncounted-${session.id}`}
+                                min="0"
+                                max="150"
+                                value={session.uncountedPitches || 0}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value, 10);
+                                  onUpdateSessionUncountedPitches(session.id, isNaN(val) ? 0 : Math.max(0, val));
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-16 h-8 text-center border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
+                              />
+                              <button
+                                type="button"
+                                id={`increment-uncounted-${session.id}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const current = session.uncountedPitches || 0;
+                                  onUpdateSessionUncountedPitches(session.id, current + 1);
+                                }}
+                                className="w-8 h-8 rounded-lg border border-slate-200 hover:bg-slate-50 flex items-center justify-center font-bold text-slate-700 transition"
+                              >
+                                +
+                              </button>
+                              <div className="text-slate-400 text-xs px-1">pitches</div>
+                            </div>
+                          </div>
+
+                          <div className="text-xs font-semibold text-slate-600 bg-slate-50 p-2.5 rounded-lg border border-slate-100 flex flex-col sm:flex-row justify-between gap-2">
+                            <span>Charted Pitches: <strong className="text-slate-900">{pitchesThrown}</strong></span>
+                            <span>Uncounted Side Pitches: <strong className="text-slate-900">{session.uncountedPitches || 0}</strong></span>
+                            <span className="text-emerald-700">Total Safety Count: <strong className="text-emerald-900">{totalPitches}</strong></span>
+                          </div>
+                        </div>
+                      )}
 
                       <StrikeZoneHeatmap
                         pitches={pitches}

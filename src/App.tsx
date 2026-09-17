@@ -50,6 +50,7 @@ import {
   reopenPitcherSession,
   deletePitcherSession,
   updateSessionNotes,
+  updateSessionUncountedPitches,
   getPitchesForSession,
   getPitchesForEvent,
   addPitchToSession,
@@ -369,8 +370,16 @@ export default function App() {
   // Handlers for live pitches & sessions
   const handleStartSession = (pitcherId: string) => {
     if (!selectedEvent) return;
-    const session = startPitcherSession(selectedEvent.id, pitcherId);
-    setActiveSessionId(session.id);
+    const existing = getSessionsForEvent(selectedEvent.id).find((s) => s.pitcherId === pitcherId);
+    if (existing) {
+      if (existing.status === 'completed') {
+        reopenPitcherSession(existing.id);
+      }
+      setActiveSessionId(existing.id);
+    } else {
+      const session = startPitcherSession(selectedEvent.id, pitcherId);
+      setActiveSessionId(session.id);
+    }
     syncStore();
   };
 
@@ -428,6 +437,11 @@ export default function App() {
     updateSessionNotes(sessionId, coachId, notes);
   };
 
+  const handleUpdateSessionUncountedPitches = (sessionId: string, count: number) => {
+    updateSessionUncountedPitches(sessionId, count);
+    syncStore();
+  };
+
   const handleUpdateOuts = (outs: number) => {
     if (!selectedEvent) return;
     setEventOuts(selectedEvent.id, outs);
@@ -472,10 +486,12 @@ export default function App() {
             team={selectedTeam || teams[0]}
             players={teamPlayers}
             allEventPitches={allEventPitches}
+            allEventSessions={allEventSessions}
             onBackToEvents={() => setSelectedEventId(null)}
             onReopenEvent={() => handleReopenEvent(selectedEvent.id)}
             onDeleteEvent={() => handleDeleteEvent(selectedEvent.id)}
             onSaveNotes={handleSaveNotes}
+            onUpdateSessionUncountedPitches={handleUpdateSessionUncountedPitches}
           />
         </div>
       );

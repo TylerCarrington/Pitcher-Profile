@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { Player, BaseballEvent } from '../types';
+import { Player, BaseballEvent, PitcherSession } from '../types';
 import { PitchSmartBadge } from './PitchSmartBadge';
 import { calculatePitchSmartStatus } from '../utils/pitchSmart';
-import { User, LogOut, CheckCircle2, AlertTriangle, ChevronRight, ArrowLeft } from 'lucide-react';
+import { User, LogOut, CheckCircle2, AlertTriangle, ChevronRight, ArrowLeft, ChevronDown } from 'lucide-react';
 
 interface LivePitchHeaderProps {
   pitcher: Player;
@@ -26,6 +26,10 @@ interface LivePitchHeaderProps {
   onEndSession: () => void;
   onEndEvent: () => void;
   onBackToTeam: () => void;
+  // Live pitcher direct switching props
+  teamPlayers?: Player[];
+  allEventSessions?: PitcherSession[];
+  onStartSession?: (pitcherId: string) => void;
 }
 
 export const LivePitchHeader: React.FC<LivePitchHeaderProps> = ({
@@ -49,12 +53,23 @@ export const LivePitchHeader: React.FC<LivePitchHeaderProps> = ({
   onEndSession,
   onEndEvent,
   onBackToTeam,
+  teamPlayers = [],
+  allEventSessions = [],
+  onStartSession,
 }) => {
   const [confirmingEndInning, setConfirmingEndInning] = useState(false);
+  const [showActiveDropdown, setShowActiveDropdown] = useState(false);
+
   const pitchSmart = calculatePitchSmartStatus(pitchCount, pitcher.seasonAge, event.scheduledAt);
   const fpsPct = firstPitchTotal > 0 ? Math.round((firstPitchStrikes / firstPitchTotal) * 100) : 0;
   const strikePct = pitchCount > 0 ? Math.round((totalStrikes / pitchCount) * 100) : 0;
   const sbRatio = totalBalls > 0 ? (totalStrikes / totalBalls).toFixed(2) : (totalStrikes > 0 ? `${totalStrikes}:0` : '0.00');
+
+  // Find other active pitchers in this event
+  const activeSessions = allEventSessions.filter((s) => s.status === 'active');
+  const otherActivePitchers = teamPlayers.filter(
+    (p) => p.id !== pitcher.id && activeSessions.some((s) => s.pitcherId === p.id)
+  );
 
   return (
     <header
@@ -64,46 +79,150 @@ export const LivePitchHeader: React.FC<LivePitchHeaderProps> = ({
       <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2 space-y-2 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-3">
         {/* Top Row on Mobile: Pitcher Info (Left) & End Session/Event Actions (Top Right) */}
         <div className="flex items-center justify-between gap-2 min-w-0">
-          {/* Pitcher Info */}
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="relative shrink-0">
-              {pitcher.imageUrl ? (
-                <img
-                  src={pitcher.imageUrl}
-                  alt={pitcher.name}
-                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-emerald-500 shadow-sm"
-                />
-              ) : (
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-800 border-2 border-emerald-500 flex items-center justify-center font-bold text-emerald-400">
-                  <User className="w-4 h-4 sm:w-5 sm:h-5" />
+          {/* Pitcher Info & Direct Switching Dropdown */}
+          <div className="relative">
+            {otherActivePitchers.length > 0 ? (
+              <button
+                type="button"
+                id="active-pitchers-dropdown-toggle"
+                onClick={() => setShowActiveDropdown(!showActiveDropdown)}
+                className="flex items-center gap-2.5 min-w-0 text-left hover:bg-slate-800/80 p-1.5 -m-1.5 rounded-xl transition-all cursor-pointer border border-transparent hover:border-slate-700 select-none group"
+              >
+                <div className="relative shrink-0">
+                  {pitcher.imageUrl ? (
+                    <img
+                      src={pitcher.imageUrl}
+                      alt={pitcher.name}
+                      className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-emerald-500 shadow-sm"
+                    />
+                  ) : (
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-800 border-2 border-emerald-500 flex items-center justify-center font-bold text-emerald-400">
+                      <User className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </div>
+                  )}
+                  <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 font-black text-[9px] px-1 py-0.2 rounded-full border border-slate-900 shadow">
+                    #{pitcher.jerseyNumber}
+                  </span>
                 </div>
-              )}
-              <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 font-black text-[9px] px-1 py-0.2 rounded-full border border-slate-900 shadow">
-                #{pitcher.jerseyNumber}
-              </span>
-            </div>
 
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h2 className="font-bold text-sm sm:text-base tracking-tight truncate text-white">
-                  {pitcher.name}
-                </h2>
-                <span className="text-[10px] sm:text-[11px] px-1.5 py-0.2 rounded uppercase font-bold tracking-wider bg-slate-800 text-slate-300 border border-slate-700 shrink-0">
-                  {pitcher.throws || 'R'}HP
-                </span>
+                <div className="min-w-0 pr-1">
+                  <div className="flex items-center gap-1">
+                    <h2 className="font-bold text-sm sm:text-base tracking-tight truncate text-white max-w-[100px] xs:max-w-none">
+                      {pitcher.name}
+                    </h2>
+                    <ChevronDown className="w-3.5 h-3.5 text-emerald-400 group-hover:text-emerald-300 transition-transform duration-200" />
+                  </div>
+                  <p className="text-[10px] text-slate-400 truncate flex items-center gap-1">
+                    <span className="text-emerald-400 font-semibold uppercase tracking-wider text-[9px] animate-pulse">
+                      Active
+                    </span>
+                    <span>• {otherActivePitchers.length} more active</span>
+                  </p>
+                </div>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="relative shrink-0">
+                  {pitcher.imageUrl ? (
+                    <img
+                      src={pitcher.imageUrl}
+                      alt={pitcher.name}
+                      className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-emerald-500 shadow-sm"
+                    />
+                  ) : (
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-slate-800 border-2 border-emerald-500 flex items-center justify-center font-bold text-emerald-400">
+                      <User className="w-4 h-4 sm:w-5 sm:h-5" />
+                    </div>
+                  )}
+                  <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-slate-950 font-black text-[9px] px-1 py-0.2 rounded-full border border-slate-900 shadow">
+                    #{pitcher.jerseyNumber}
+                  </span>
+                </div>
+
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <h2 className="font-bold text-sm sm:text-base tracking-tight truncate text-white">
+                      {pitcher.name}
+                    </h2>
+                    <span className="text-[10px] sm:text-[11px] px-1.5 py-0.2 rounded uppercase font-bold tracking-wider bg-slate-800 text-slate-300 border border-slate-700 shrink-0">
+                      {pitcher.throws || 'R'}HP
+                    </span>
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-slate-400 truncate flex items-center gap-1 mt-0.5">
+                    <span className="capitalize font-medium text-emerald-400 truncate">
+                      {event.type === 'game' ? (event.opponent ? `vs ${event.opponent}` : 'Game') : 'Bullpen Session'}
+                    </span>
+                    {event.location && (
+                      <>
+                        <span className="hidden xs:inline">•</span>
+                        <span className="truncate hidden xs:inline">{event.location}</span>
+                      </>
+                    )}
+                  </p>
+                </div>
               </div>
-              <p className="text-[11px] sm:text-xs text-slate-400 truncate flex items-center gap-1 mt-0.5">
-                <span className="capitalize font-medium text-emerald-400 truncate">
-                  {event.type === 'game' ? (event.opponent ? `vs ${event.opponent}` : 'Game') : 'Bullpen Session'}
-                </span>
-                {event.location && (
-                  <>
-                    <span className="hidden xs:inline">•</span>
-                    <span className="truncate hidden xs:inline">{event.location}</span>
-                  </>
-                )}
-              </p>
-            </div>
+            )}
+
+            {/* Dropdown Menu */}
+            {showActiveDropdown && otherActivePitchers.length > 0 && (
+              <>
+                {/* Click-catcher Backdrop */}
+                <div
+                  className="fixed inset-0 z-30 cursor-default"
+                  onClick={() => setShowActiveDropdown(false)}
+                />
+
+                <div
+                  id="active-pitchers-dropdown"
+                  className="absolute left-0 mt-2 w-56 sm:w-64 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl py-1.5 z-40 animate-in fade-in slide-in-from-top-1 duration-100"
+                >
+                  <div className="px-3 py-1 border-b border-slate-800">
+                    <span className="text-[9px] uppercase font-bold tracking-wider text-slate-400 block">
+                      Switch Active Pitcher
+                    </span>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto divide-y divide-slate-800/60">
+                    {otherActivePitchers.map((activePl) => (
+                      <button
+                        key={activePl.id}
+                        type="button"
+                        id={`dropdown-switch-to-${activePl.id}`}
+                        onClick={() => {
+                          if (onStartSession) {
+                            onStartSession(activePl.id);
+                          }
+                          setShowActiveDropdown(false);
+                        }}
+                        className="w-full px-3 py-2 text-left hover:bg-slate-800/80 flex items-center gap-2.5 transition active:bg-slate-800"
+                      >
+                        {activePl.imageUrl ? (
+                          <img
+                            src={activePl.imageUrl}
+                            alt={activePl.name}
+                            className="w-7 h-7 rounded-full object-cover border border-slate-700"
+                          />
+                        ) : (
+                          <div className="w-7 h-7 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-xs text-slate-300">
+                            #{activePl.jerseyNumber}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-xs sm:text-sm text-slate-100 truncate">
+                            {activePl.name}
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            #{activePl.jerseyNumber} • {activePl.throws || 'R'}HP
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider shrink-0 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
+                          Switch
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Top Right Action Buttons */}

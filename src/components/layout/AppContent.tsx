@@ -10,11 +10,14 @@ import { TeamHubView } from './TeamHubView';
 import { LiveSessionView } from '../../features/sessions/components/LiveSessionView';
 import { EventReviewSummary } from '../../features/events/components/EventReviewSummary';
 import { OfflineIndicator } from '../shared/OfflineIndicator';
+import { AdminDashboardView } from '../../features/admin/components/AdminDashboardView';
 
 export const AppContent: React.FC = () => {
   const { isSignedIn, currentCoach, signInWithGoogle, createAccount } = useAuth();
   const { selectTeam } = useTeam();
   const { selectedEvent, activeSession } = useEvent();
+
+  const [showAdminView, setShowAdminView] = useState(false);
 
   const [postAuthPendingUser, setPostAuthPendingUser] = useState<{
     displayName: string;
@@ -53,7 +56,12 @@ export const AppContent: React.FC = () => {
     );
   }
 
-  // 2. Active Event / Pitch Tracking or Completed Game Summary View
+  // 2. System Admin Mode View (For tylercarringtonwa@gmail.com)
+  if (showAdminView && currentCoach.email?.trim().toLowerCase() === 'tylercarringtonwa@gmail.com') {
+    return <AdminDashboardView onClose={() => setShowAdminView(false)} />;
+  }
+
+  // 3. Active Event / Pitch Tracking or Completed Game Summary View
   if (selectedEvent) {
     if (selectedEvent.status === 'ended' && !activeSession) {
       return (
@@ -66,10 +74,10 @@ export const AppContent: React.FC = () => {
     return <LiveSessionView />;
   }
 
-  // 3. Default Team & Events Hub View
+  // 4. Default Team & Events Hub View
   return (
     <div className="min-h-screen bg-slate-100/70 text-slate-900 flex flex-col">
-      <AppHeader />
+      <AppHeader onOpenAdmin={() => setShowAdminView(true)} />
 
       {/* Join Link Toast Notification */}
       {joinNotification && (

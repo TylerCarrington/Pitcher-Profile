@@ -5,7 +5,16 @@ import {defineConfig} from 'vite';
 import {VitePWA} from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
+  const appVersion = process.env.VITE_APP_VERSION || process.env.npm_package_version || '1.0.0';
+  const buildDate = process.env.VITE_BUILD_DATE || new Date().toISOString();
+  const commitSha = process.env.VITE_COMMIT_SHA || process.env.GITHUB_SHA || 'dev-local';
+
   return {
+    define: {
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
+      'import.meta.env.VITE_BUILD_DATE': JSON.stringify(buildDate),
+      'import.meta.env.VITE_COMMIT_SHA': JSON.stringify(commitSha),
+    },
     base: './', // Use relative paths for assets to support GitHub Pages subpaths
     plugins: [
       react(),

@@ -7,7 +7,11 @@ import { PWAInstallButton } from '../shared/PWAInstallButton';
 import { useAuth } from '../../features/auth/hooks/useAuth';
 import { useSyncListener } from '../../features/sync/hooks/useSyncListener';
 
-export const AppHeader: React.FC = () => {
+interface AppHeaderProps {
+  onOpenAdmin?: () => void;
+}
+
+export const AppHeader: React.FC<AppHeaderProps> = ({ onOpenAdmin }) => {
   const { currentCoach } = useAuth();
   const { syncStatus, lastSyncTime } = useSyncListener();
 
@@ -71,7 +75,7 @@ export const AppHeader: React.FC = () => {
 
           {currentCoach && <TeamSwitcher />}
           <PWAInstallButton />
-          {currentCoach && <CoachSwitcher />}
+          {currentCoach && <CoachSwitcher onOpenAdmin={onOpenAdmin} />}
         </div>
       </div>
     </header>

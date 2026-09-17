@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Coach } from '../../../types';
-import { ChevronDown, Check, LogOut } from 'lucide-react';
+import { ChevronDown, Check, LogOut, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../auth/hooks/useAuth';
 
 interface CoachSwitcherProps {
@@ -8,6 +8,7 @@ interface CoachSwitcherProps {
   allCoaches?: Coach[];
   onSelectCoach?: (coachId: string) => void;
   onSignOut?: () => void;
+  onOpenAdmin?: () => void;
 }
 
 export const CoachSwitcher: React.FC<CoachSwitcherProps> = (props) => {
@@ -20,6 +21,8 @@ export const CoachSwitcher: React.FC<CoachSwitcherProps> = (props) => {
   const [isOpen, setIsOpen] = useState(false);
 
   if (!currentCoach) return null;
+
+  const isAdminUser = currentCoach.email?.trim().toLowerCase() === 'tylercarringtonwa@gmail.com';
 
   return (
     <div className="relative">
@@ -75,6 +78,29 @@ export const CoachSwitcher: React.FC<CoachSwitcherProps> = (props) => {
             <p className="text-xs font-bold text-slate-900 truncate">{currentCoach.name}</p>
             <p className="text-[11px] text-slate-500 truncate">{currentCoach.email}</p>
           </div>
+
+          {/* Admin Screen Link (Visible for tylercarringtonwa@gmail.com) */}
+          {isAdminUser && props.onOpenAdmin && (
+            <div className="p-1.5 border-b border-indigo-100 bg-indigo-50/60">
+              <button
+                type="button"
+                id="admin-console-link-btn"
+                onClick={() => {
+                  setIsOpen(false);
+                  if (props.onOpenAdmin) props.onOpenAdmin();
+                }}
+                className="w-full px-2.5 py-1.5 text-xs text-indigo-900 bg-indigo-100/70 hover:bg-indigo-200/80 rounded-lg font-bold flex items-center justify-between transition cursor-pointer border border-indigo-200/80"
+              >
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span>Admin Screen</span>
+                </div>
+                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-indigo-600 text-white tracking-wider">
+                  Admin
+                </span>
+              </button>
+            </div>
+          )}
 
           <div className="px-3 py-1.5 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
             Switch Coach Profile

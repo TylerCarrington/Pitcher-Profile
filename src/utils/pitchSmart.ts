@@ -786,6 +786,19 @@ export function calculatePlayerRestEligibility(params: {
   const { player, teamId, teamPresetId, events, sessions, pitches } = params;
   const targetDate = params.targetDate || new Date();
 
+  if (!player) {
+    return {
+      playerId: '',
+      playerName: '',
+      teamId: teamId || '',
+      isEligible: true,
+      daysRemaining: 0,
+      eligibleDateText: 'Eligible to pitch',
+      statusText: 'Available now',
+      badgeVariant: 'available',
+    };
+  }
+
   // Filter team events that have occurred on or before target date
   const teamEvents = events.filter((e) => e.teamId === teamId);
   const teamSessions = sessions.filter((s) => s.pitcherId === player.id);
@@ -849,7 +862,7 @@ export function calculatePlayerRestEligibility(params: {
   dailyAppearances.sort((a, b) => b.midnight - a.midnight);
   const lastAppearance = dailyAppearances[0];
 
-  const bracket = getPitchSmartBracket(player.seasonAge, teamPresetId);
+  const bracket = getPitchSmartBracket(player?.seasonAge ?? 12, teamPresetId);
 
   // Determine required rest days based on final pitch count for that calendar day
   let requiredRestDays = 0;

@@ -186,6 +186,16 @@ function saveData(data: AppData, skipCloud = false) {
   }
 }
 
+function cleanForFirestore<T>(val: T): T {
+  if (val === undefined) return null as any;
+  if (val === null || typeof val !== 'object') return val;
+  try {
+    return JSON.parse(JSON.stringify(val));
+  } catch {
+    return val;
+  }
+}
+
 export async function syncSingleTeamToCloud(team: Team, dataOverride?: AppData): Promise<void> {
   if (!team || !team.id) return;
   const data = dataOverride || loadData();
@@ -224,12 +234,14 @@ export async function syncSingleTeamToCloud(team: Team, dataOverride?: AppData):
     lastUpdated: new Date().toISOString(),
   };
 
+  const sanitizedPayload = cleanForFirestore(payload);
+
   try {
-    await setDoc(doc(db, 'teams', team.id), payload, { merge: true });
+    await setDoc(doc(db, 'teams', team.id), sanitizedPayload, { merge: true });
     if (cleanCode) {
-      await setDoc(doc(db, 'invite_codes', cleanCode), payload, { merge: true });
+      await setDoc(doc(db, 'invite_codes', cleanCode), sanitizedPayload, { merge: true });
       if (cleanCodeWithoutDash && cleanCodeWithoutDash !== cleanCode) {
-        await setDoc(doc(db, 'invite_codes', cleanCodeWithoutDash), payload, { merge: true });
+        await setDoc(doc(db, 'invite_codes', cleanCodeWithoutDash), sanitizedPayload, { merge: true });
       }
     }
   } catch (err) {
@@ -237,25 +249,27 @@ export async function syncSingleTeamToCloud(team: Team, dataOverride?: AppData):
   }
 }
 
-export function syncTeamByEventId(eventId: string, data?: AppData): void {
+export function syncTeamByEventId(eventId: string, data?: AppData): Promise<void> {
   const currentData = data || loadData();
   const event = currentData.events.find((e) => e.id === eventId);
   if (event?.teamId) {
     const team = currentData.teams.find((t) => t.id === event.teamId);
     if (team) {
-      syncSingleTeamToCloud(team, currentData).catch((err) =>
+      return syncSingleTeamToCloud(team, currentData).catch((err) =>
         console.warn('Notice on instant team cloud sync by event:', err),
       );
     }
   }
+  return Promise.resolve();
 }
 
-export function syncTeamBySessionId(sessionId: string, data?: AppData): void {
+export function syncTeamBySessionId(sessionId: string, data?: AppData): Promise<void> {
   const currentData = data || loadData();
   const session = currentData.sessions.find((s) => s.id === sessionId);
   if (session?.eventId) {
-    syncTeamByEventId(session.eventId, currentData);
+    return syncTeamByEventId(session.eventId, currentData);
   }
+  return Promise.resolve();
 }
 
 async function syncTeamAndInvitesToFirestore(teams: Team[], players?: Player[], coaches?: Coach[]) {
@@ -291,15 +305,12 @@ async function pushToFirestoreDebounced(data: AppData) {
       notifySyncStatus('syncing');
       isPushingToCloud = true;
       const coachDocRef = doc(db, 'coaches', docId, 'state', 'current');
-      await setDoc(
-        coachDocRef,
-        {
-          ...data,
-          lastUpdated: new Date().toISOString(),
-          updatedBy: docId,
-        },
-        { merge: true },
-      );
+      const sanitizedCoachState = cleanForFirestore({
+        ...data,
+        lastUpdated: new Date().toISOString(),
+        updatedBy: docId,
+      });
+      await setDoc(coachDocRef, sanitizedCoachState, { merge: true });
 
       // Also publish teams and active invite codes to the shared directory
       await syncTeamAndInvitesToFirestore(data.teams, data.players, data.coaches);
@@ -380,33 +391,35 @@ export function syncTeamListeners(teams: Team[]): void {
       const unsub = onSnapshot(
         doc(db, 'teams', team.id),
         (snapshot) => {
+          if (snapshot.metadata.hasPendingWrites) {
+            // Local optimistic write pending server confirmation; avoid re-echoing
+            return;
+          }
+
           if (!snapshot.exists()) {
-            if (!isPushingToCloud) {
-              const localData = loadData();
-              const teamEvents = localData.events.filter((e) => e.teamId === team.id);
-              const eventIds = new Set(teamEvents.map((e) => e.id));
+            const localData = loadData();
+            const teamEvents = localData.events.filter((e) => e.teamId === team.id);
+            const eventIds = new Set(teamEvents.map((e) => e.id));
 
-              localData.teams = localData.teams.filter((t) => t.id !== team.id);
-              localData.players = localData.players.filter((p) => p.teamId !== team.id);
-              localData.events = localData.events.filter((e) => e.teamId !== team.id);
-              localData.sessions = localData.sessions.filter((s) => !eventIds.has(s.eventId));
-              localData.pitches = localData.pitches.filter((p) => !eventIds.has(p.eventId));
+            localData.teams = localData.teams.filter((t) => t.id !== team.id);
+            localData.players = localData.players.filter((p) => p.teamId !== team.id);
+            localData.events = localData.events.filter((e) => e.teamId !== team.id);
+            localData.sessions = localData.sessions.filter((s) => !eventIds.has(s.eventId));
+            localData.pitches = localData.pitches.filter((p) => !eventIds.has(p.eventId));
 
-              saveData(localData, true);
+            saveData(localData, true);
 
-              if (activeTeamUnsubscribes.has(team.id)) {
-                const unsubFn = activeTeamUnsubscribes.get(team.id);
-                if (unsubFn) unsubFn();
-                activeTeamUnsubscribes.delete(team.id);
-              }
+            if (activeTeamUnsubscribes.has(team.id)) {
+              const unsubFn = activeTeamUnsubscribes.get(team.id);
+              if (unsubFn) unsubFn();
+              activeTeamUnsubscribes.delete(team.id);
             }
             return;
           }
 
-          if (snapshot.exists() && !isPushingToCloud) {
-            const remoteTeam = snapshot.data() as any;
-            if (remoteTeam && remoteTeam.id) {
-              const localData = loadData();
+          const remoteTeam = snapshot.data() as any;
+          if (remoteTeam && remoteTeam.id) {
+            const localData = loadData();
 
               // Merge team
               const tIdx = localData.teams.findIndex((t) => t.id === remoteTeam.id);
@@ -492,9 +505,8 @@ export function syncTeamListeners(teams: Team[]): void {
 
               saveData(localData, true); // save locally and trigger UI notify without echoing
             }
-          }
-        },
-        (err) => {
+          },
+          (err) => {
           console.warn(`Notice on team ${team.id} real-time sync:`, err);
         },
       );
@@ -1465,7 +1477,7 @@ export function reopenEvent(eventId: string): void {
   const event = data.events.find((e) => e.id === eventId);
   if (event) {
     event.status = 'in_progress';
-    event.endedAt = undefined;
+    delete event.endedAt;
 
     // Reactivate the most recent pitcher session if no session is active
     const eventSessions = data.sessions.filter((s) => s.eventId === eventId);
@@ -1476,7 +1488,7 @@ export function reopenEvent(eventId: string): void {
       );
       if (sorted[0]) {
         sorted[0].status = 'active';
-        sorted[0].endedAt = undefined;
+        delete sorted[0].endedAt;
       }
     }
 
@@ -1517,13 +1529,13 @@ export function reopenPitcherSession(sessionId: string): PitcherSession | undefi
   if (!session) return undefined;
 
   session.status = 'active';
-  session.endedAt = undefined;
+  delete session.endedAt;
 
   // Ensure parent event is in progress
   const event = data.events.find((e) => e.id === session.eventId);
-  if (event && event.status === 'ended') {
+  if (event) {
     event.status = 'in_progress';
-    event.endedAt = undefined;
+    delete event.endedAt;
   }
 
   saveData(data);

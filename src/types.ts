@@ -31,7 +31,8 @@ export type PitchRulePresetId =
   | 'usssa_travel'
   | 'cal_ripken_babe_ruth'
   | 'nfhs_high_school'
-  | 'perfect_game_travel';
+  | 'perfect_game_travel'
+  | 'top_tier';
 
 export interface SafetyWarningFlag {
   id: string;

@@ -123,8 +123,11 @@ export default function App() {
     };
   }, []);
 
+  const [storeTick, setStoreTick] = useState(0);
+
   // Sync state from storage
   const syncStore = useCallback(() => {
+    setStoreTick((t) => t + 1);
     const coach = getCurrentCoach();
     setCurrentCoach(coach);
     setAllCoaches(getAllCoaches());
@@ -195,15 +198,34 @@ export default function App() {
   const selectedEvent = selectedEventId ? getEventById(selectedEventId) || null : null;
 
   // Active session
+  const activeSessionCandidate = activeSessionId ? getSessionById(activeSessionId) : null;
+  const liveActiveSession = selectedEvent ? getActiveSessionForEvent(selectedEvent.id) || null : null;
   const activeSession = selectedEvent
-    ? (activeSessionId ? getSessionById(activeSessionId) : null) ||
-      getActiveSessionForEvent(selectedEvent.id) ||
-      null
+    ? (activeSessionCandidate && activeSessionCandidate.status === 'active'
+        ? activeSessionCandidate
+        : liveActiveSession)
     : null;
   const activePitcher =
     activeSession && activeSession.pitcherId
       ? getPlayerById(activeSession.pitcherId) || null
       : null;
+
+  // Automatically synchronize activeSessionId with any active session in the event (including remote reopens from other coaches)
+  useEffect(() => {
+    if (selectedEvent) {
+      const liveActive = getActiveSessionForEvent(selectedEvent.id);
+      if (liveActive && liveActive.status === 'active') {
+        if (activeSessionId !== liveActive.id) {
+          setActiveSessionId(liveActive.id);
+        }
+      } else if (activeSessionId) {
+        const candidate = getSessionById(activeSessionId);
+        if (!candidate || candidate.status === 'completed') {
+          setActiveSessionId(null);
+        }
+      }
+    }
+  }, [selectedEvent?.id, selectedEvent?.status, activeSessionId, storeTick]);
 
   const sessionPitches = activeSession ? getPitchesForSession(activeSession.id) : [];
   const allEventPitches = selectedEvent ? getPitchesForEvent(selectedEvent.id) : [];
@@ -488,7 +510,6 @@ export default function App() {
             allEventPitches={allEventPitches}
             allEventSessions={allEventSessions}
             onBackToEvents={() => setSelectedEventId(null)}
-            onReopenEvent={() => handleReopenEvent(selectedEvent.id)}
             onDeleteEvent={() => handleDeleteEvent(selectedEvent.id)}
             onSaveNotes={handleSaveNotes}
             onUpdateSessionUncountedPitches={handleUpdateSessionUncountedPitches}
@@ -519,6 +540,7 @@ export default function App() {
         onBackToTeam={() => setSelectedEventId(null)}
         onUpdateOuts={handleUpdateOuts}
         onEndInning={handleEndInning}
+        team={selectedTeam}
       />
     );
   }

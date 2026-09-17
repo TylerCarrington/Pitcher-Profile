@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { calculatePitchSmartStatus, PitchSmartStatus } from '../utils/pitchSmart';
+import { calculatePitchSmartStatus, PitchSmartStatus, CumulativePitchTotals } from '../utils/pitchSmart';
 import { PitchRulePresetId } from '../types';
 import { Shield, AlertTriangle, Info, X, CheckCircle2 } from 'lucide-react';
 
@@ -13,6 +13,7 @@ interface PitchSmartBadgeProps {
   showDetails?: boolean;
   presetId?: PitchRulePresetId;
   isBullpen?: boolean;
+  cumulativeTotals?: Partial<CumulativePitchTotals>;
 }
 
 export const PitchSmartBadge: React.FC<PitchSmartBadgeProps> = ({
@@ -25,6 +26,7 @@ export const PitchSmartBadge: React.FC<PitchSmartBadgeProps> = ({
   showDetails = false,
   presetId = 'usa_pitch_smart',
   isBullpen = false,
+  cumulativeTotals,
 }) => {
   const [showModal, setShowModal] = useState(false);
   const status: PitchSmartStatus = calculatePitchSmartStatus(
@@ -32,15 +34,16 @@ export const PitchSmartBadge: React.FC<PitchSmartBadgeProps> = ({
     seasonAge,
     eventDate,
     presetId,
+    cumulativeTotals,
   );
 
   const getStatusColor = () => {
-    if (status.isAtOrOverMax) {
+    if (status.isAtOrOverMax || status.isAtOrOver2DayMax || status.isAtOrOver3DayMax || status.isAtOrOverSingleEventMax) {
       return isBullpen
         ? 'bg-amber-600 text-white border-amber-700'
         : 'bg-rose-600 text-white border-rose-700';
     }
-    if (status.isNearMax) {
+    if (status.isNearMax || status.isNear2DayMax || status.isNear3DayMax || status.isNearSingleEventMax) {
       return isBullpen
         ? 'bg-amber-500 text-slate-950 border-amber-600'
         : 'bg-rose-500 text-white border-rose-600';
@@ -172,6 +175,67 @@ export const PitchSmartBadge: React.FC<PitchSmartBadgeProps> = ({
                 />
               </div>
             </div>
+
+            {/* Active Warnings if Any */}
+            {status.warningMessages.length > 0 && (
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 space-y-1">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-800 uppercase tracking-wider">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Rule & Limit Warnings</span>
+                </div>
+                <div className="space-y-1 pt-1">
+                  {status.warningMessages.map((msg, idx) => (
+                    <p key={idx} className="text-xs text-amber-950 font-medium">
+                      • {msg}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Multi-Day & Single-Event Cumulative Tournament Limits */}
+            {(status.twoDayMax !== undefined || status.threeDayMax !== undefined || status.singleEventMax !== undefined) && (
+              <div className="space-y-1.5">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Tournament Cumulative Limits
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                  {status.twoDayMax !== undefined && (
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                      <div className="text-[10px] uppercase font-bold text-slate-500">2-Day Rolling Max</div>
+                      <div className="text-sm font-black text-slate-800">
+                        {status.twoDayPitches ?? pitchCount} / {status.twoDayMax}p
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        {status.twoDayRemaining !== undefined ? `${status.twoDayRemaining}p remaining` : ''}
+                      </div>
+                    </div>
+                  )}
+                  {status.threeDayMax !== undefined && (
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                      <div className="text-[10px] uppercase font-bold text-slate-500">3-Day Rolling Max</div>
+                      <div className="text-sm font-black text-slate-800">
+                        {status.threeDayPitches ?? pitchCount} / {status.threeDayMax}p
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        {status.threeDayRemaining !== undefined ? `${status.threeDayRemaining}p remaining` : ''}
+                      </div>
+                    </div>
+                  )}
+                  {status.singleEventMax !== undefined && (
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+                      <div className="text-[10px] uppercase font-bold text-slate-500">Single-Event Ceiling</div>
+                      <div className="text-sm font-black text-slate-800">
+                        {status.singleEventPitches ?? pitchCount} / {status.singleEventMax}p
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        {status.singleEventRemaining !== undefined ? `${status.singleEventRemaining}p remaining` : ''}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Bracket Tier Table */}
             <div>

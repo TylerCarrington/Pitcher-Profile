@@ -1223,6 +1223,9 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({
                             className="bg-white border border-slate-200 px-2 py-1 rounded-md text-slate-700 font-mono"
                           >
                             <strong className="text-slate-900 font-sans">{bracket.ageLabel}:</strong> Max {bracket.dailyMax}p
+                            {bracket.twoDayMax && ` • 2-Day: ${bracket.twoDayMax}p`}
+                            {bracket.threeDayMax && ` • 3-Day: ${bracket.threeDayMax}p`}
+                            {bracket.singleEventMax && ` • Event Ceiling: ${bracket.singleEventMax}p`}
                           </span>
                         ))}
                       </div>

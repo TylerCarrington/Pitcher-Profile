@@ -8,7 +8,12 @@ import {
   savePlayer,
   getCurrentCoach,
 } from '../storage';
-import { calculatePitchSmartStatus, calculatePlayerRestEligibility, PITCH_TYPES_CONFIG } from '../utils/pitchSmart';
+import {
+  calculatePitchSmartStatus,
+  calculatePlayerRestEligibility,
+  calculateCumulativePitchTotals,
+  PITCH_TYPES_CONFIG,
+} from '../utils/pitchSmart';
 import { PitchSmartBadge } from './PitchSmartBadge';
 import { StrikeZoneHeatmap } from './StrikeZoneHeatmap';
 import { ImageUploadInput } from './ImageUploadInput';
@@ -95,15 +100,27 @@ export const PitcherProfileModal: React.FC<PitcherProfileModalProps> = ({
 
   // Pitch Smart calculations
   const seasonAge = player.seasonAge || 11;
+  const cumulativeTotals = useMemo(
+    () =>
+      calculateCumulativePitchTotals({
+        playerId: player.id,
+        teamId: team.id,
+        events: teamEvents,
+        sessions,
+        pitches,
+      }),
+    [player.id, team.id, teamEvents, sessions, pitches],
+  );
   const pitchSmart = useMemo(
     () =>
       calculatePitchSmartStatus(
-        pitches.length,
+        cumulativeTotals.todayPitches,
         seasonAge,
         undefined,
         team.pitchRulePresetId || 'usa_pitch_smart',
+        cumulativeTotals,
       ),
-    [pitches.length, seasonAge, team.pitchRulePresetId],
+    [cumulativeTotals, seasonAge, team.pitchRulePresetId],
   );
 
   // Per-Team Rest Day Eligibility
@@ -323,7 +340,24 @@ export const PitcherProfileModal: React.FC<PitcherProfileModalProps> = ({
                       <p className="text-xs text-slate-600 mt-1">
                         Age Group: <span className="font-bold">{seasonAge}U</span> ({pitchSmart.bracket.ageLabel}) &bull; Daily Max:{' '}
                         <span className="font-bold">{pitchSmart.dailyMax} pitches</span>
+                        {pitchSmart.bracket.twoDayMax && (
+                          <span> &bull; 2-Day Max: <span className="font-bold">{pitchSmart.bracket.twoDayMax}p</span></span>
+                        )}
+                        {pitchSmart.bracket.threeDayMax && (
+                          <span> &bull; 3-Day Max: <span className="font-bold">{pitchSmart.bracket.threeDayMax}p</span></span>
+                        )}
+                        {pitchSmart.bracket.singleEventMax && (
+                          <span> &bull; Event Ceiling: <span className="font-bold">{pitchSmart.bracket.singleEventMax}p</span></span>
+                        )}
                       </p>
+                      {/* Active Warnings if Any */}
+                      {pitchSmart.warningMessages.length > 0 && (
+                        <div className="mt-2 p-2 rounded-lg bg-amber-100/80 border border-amber-300 text-amber-950 text-xs font-semibold space-y-0.5">
+                          {pitchSmart.warningMessages.map((w, idx) => (
+                            <div key={idx}>⚠️ {w}</div>
+                          ))}
+                        </div>
+                      )}
                       <div className="mt-2 text-xs flex items-center gap-2 flex-wrap">
                         <span
                           className={`px-2 py-0.5 rounded-md font-bold text-xs ${
@@ -347,10 +381,20 @@ export const PitcherProfileModal: React.FC<PitcherProfileModalProps> = ({
 
                   <div className="text-right shrink-0">
                     <div className="text-lg font-black text-slate-900 font-mono">
-                      {pitchSmart.pitchCount}{' '}
+                      {cumulativeTotals.todayPitches}{' '}
                       <span className="text-xs text-slate-400 font-normal">/ {pitchSmart.dailyMax}</span>
                     </div>
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">Career Recorded Pitches</span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">Today Thrown</span>
+                    {(pitchSmart.twoDayMax !== undefined || pitchSmart.threeDayMax !== undefined) && (
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        {pitchSmart.twoDayMax !== undefined && (
+                          <div>2-Day: <strong>{cumulativeTotals.twoDayPitches}</strong> / {pitchSmart.twoDayMax}p</div>
+                        )}
+                        {pitchSmart.threeDayMax !== undefined && (
+                          <div>3-Day: <strong>{cumulativeTotals.threeDayPitches}</strong> / {pitchSmart.threeDayMax}p</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 

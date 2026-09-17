@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Player, BaseballEvent, PitcherSession } from '../types';
+import { Player, BaseballEvent, PitcherSession, PitchRulePresetId } from '../types';
 import { PitchSmartBadge } from './PitchSmartBadge';
-import { calculatePitchSmartStatus } from '../utils/pitchSmart';
+import { calculatePitchSmartStatus, CumulativePitchTotals } from '../utils/pitchSmart';
 import { User, LogOut, CheckCircle2, AlertTriangle, ChevronRight, ArrowLeft, ChevronDown } from 'lucide-react';
 
 interface LivePitchHeaderProps {
@@ -30,6 +30,8 @@ interface LivePitchHeaderProps {
   teamPlayers?: Player[];
   allEventSessions?: PitcherSession[];
   onStartSession?: (pitcherId: string) => void;
+  presetId?: PitchRulePresetId;
+  cumulativeTotals?: Partial<CumulativePitchTotals>;
 }
 
 export const LivePitchHeader: React.FC<LivePitchHeaderProps> = ({
@@ -56,11 +58,19 @@ export const LivePitchHeader: React.FC<LivePitchHeaderProps> = ({
   teamPlayers = [],
   allEventSessions = [],
   onStartSession,
+  presetId = 'usa_pitch_smart',
+  cumulativeTotals,
 }) => {
   const [confirmingEndInning, setConfirmingEndInning] = useState(false);
   const [showActiveDropdown, setShowActiveDropdown] = useState(false);
 
-  const pitchSmart = calculatePitchSmartStatus(pitchCount, pitcher.seasonAge, event.scheduledAt);
+  const pitchSmart = calculatePitchSmartStatus(
+    pitchCount,
+    pitcher.seasonAge,
+    event.scheduledAt,
+    presetId,
+    cumulativeTotals,
+  );
   const fpsPct = firstPitchTotal > 0 ? Math.round((firstPitchStrikes / firstPitchTotal) * 100) : 0;
   const strikePct = pitchCount > 0 ? Math.round((totalStrikes / pitchCount) * 100) : 0;
   const sbRatio = totalBalls > 0 ? (totalStrikes / totalBalls).toFixed(2) : (totalStrikes > 0 ? `${totalStrikes}:0` : '0.00');
@@ -324,6 +334,8 @@ export const LivePitchHeader: React.FC<LivePitchHeaderProps> = ({
               seasonAge={pitcher.seasonAge || 12}
               eventDate={event.scheduledAt}
               playerName={pitcher.name}
+              presetId={presetId}
+              cumulativeTotals={cumulativeTotals}
             />
           </div>
         </div>
@@ -462,14 +474,35 @@ export const LivePitchHeader: React.FC<LivePitchHeaderProps> = ({
       )}
 
       {/* Safety Alert Ticker if Near Next Rest Tier or Limit */}
-      {(pitchSmart.isNearNextTier || pitchSmart.isNearMax || pitchSmart.isAtOrOverMax) && (
-        <div className="bg-amber-500/15 border-t border-amber-500/30 px-4 py-1 text-center text-xs text-amber-300 flex items-center justify-center gap-2">
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-          <span>
-            {pitchSmart.isAtOrOverMax ? (
+      {(pitchSmart.warningMessages.length > 0 ||
+        pitchSmart.isNearNextTier ||
+        pitchSmart.isNearMax ||
+        pitchSmart.isAtOrOverMax ||
+        pitchSmart.isAtOrOver2DayMax ||
+        pitchSmart.isAtOrOver3DayMax ||
+        pitchSmart.isAtOrOverSingleEventMax) && (
+        <div
+          className={`px-4 py-1 text-center text-xs flex items-center justify-center gap-2 border-t ${
+            pitchSmart.isAtOrOverMax ||
+            pitchSmart.isAtOrOver2DayMax ||
+            pitchSmart.isAtOrOver3DayMax ||
+            pitchSmart.isAtOrOverSingleEventMax
+              ? 'bg-rose-500/20 border-rose-500/40 text-rose-300'
+              : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+          }`}
+        >
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5">
+            {pitchSmart.warningMessages.length > 0 ? (
+              pitchSmart.warningMessages.map((msg, i) => (
+                <span key={i} className="font-semibold">
+                  {msg}
+                  {i < pitchSmart.warningMessages.length - 1 ? ' • ' : ''}
+                </span>
+              ))
+            ) : pitchSmart.isAtOrOverMax ? (
               <strong className="text-rose-300">
-                DAILY MAX REACHED ({pitchSmart.dailyMax} pitches). Remove pitcher immediately per
-                Pitch Smart rules.
+                DAILY MAX REACHED ({pitchSmart.dailyMax} pitches). Remove pitcher immediately per rule guidelines.
               </strong>
             ) : pitchSmart.isNearMax ? (
               <strong>
@@ -483,7 +516,7 @@ export const LivePitchHeader: React.FC<LivePitchHeaderProps> = ({
                 {pitchSmart.nextTier?.label || 'next tier'}.
               </span>
             )}
-          </span>
+          </div>
         </div>
       )}
     </header>

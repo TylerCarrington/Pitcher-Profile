@@ -10,8 +10,16 @@ import {
   StrikeSubDetail,
   InPlaySubDetail,
   PitchLocation,
+  Team,
 } from '../types';
-import { calculateGamePitchingMetrics, getAllCoaches } from '../storage';
+import {
+  calculateGamePitchingMetrics,
+  getAllCoaches,
+  getEventsForTeam,
+  getAllSessions,
+  getPitchesForPlayer,
+} from '../storage';
+import { calculateCumulativePitchTotals } from '../utils/pitchSmart';
 import { LivePitchHeader } from './LivePitchHeader';
 import { StrikeZoneGrid } from './StrikeZoneGrid';
 import { PitchOutcomeSelector } from './PitchOutcomeSelector';
@@ -63,6 +71,7 @@ interface LiveSessionViewProps {
   onBackToTeam: () => void;
   onUpdateOuts?: (outs: number) => void;
   onEndInning?: () => void;
+  team?: Team | null;
 }
 
 export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
@@ -85,6 +94,7 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
   onBackToTeam,
   onUpdateOuts,
   onEndInning,
+  team,
 }) => {
   const [pendingLocation, setPendingLocation] = useState<PitchLocation | null>(null);
   const [pendingStrike, setPendingStrike] = useState(false);
@@ -92,6 +102,25 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
   const [selectedPitchType, setSelectedPitchType] = useState<PitchType>('fastball');
   const [autoLogNotice, setAutoLogNotice] = useState<string | null>(null);
   const isAutoLoggingRef = useRef(false);
+
+  // Compute multi-day & rolling cumulative totals for active pitcher
+  const cumulativeTotals = useMemo(() => {
+    if (!activePitcher || !event.teamId) return undefined;
+    const teamEvents = getEventsForTeam(event.teamId);
+    const sessions = getAllSessions();
+    const pitches = getPitchesForPlayer(activePitcher.id);
+    return calculateCumulativePitchTotals({
+      playerId: activePitcher.id,
+      teamId: event.teamId,
+      targetEventDate: event.scheduledAt,
+      currentEventId: event.id,
+      currentSessionId: activeSession?.id,
+      livePitchCount: sessionPitches.length,
+      events: teamEvents,
+      sessions,
+      pitches,
+    });
+  }, [activePitcher, event.teamId, event.scheduledAt, event.id, activeSession?.id, sessionPitches.length]);
 
   const [showPitcherPicker, setShowPitcherPicker] = useState(!activeSession || !activePitcher);
   const [showEndSessionConfirm, setShowEndSessionConfirm] = useState(false);
@@ -119,14 +148,14 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
     return () => clearTimeout(timer);
   }, [autoLogNotice]);
 
-  // Sync pitcher picker visibility whenever active session/pitcher changes
+  // Sync pitcher picker visibility whenever active session/pitcher changes (including status transitions to active)
   useEffect(() => {
-    if (activeSession && activePitcher) {
+    if (activeSession && activeSession.status === 'active' && activePitcher) {
       setShowPitcherPicker(false);
     } else {
       setShowPitcherPicker(true);
     }
-  }, [activeSession?.id, activePitcher?.id]);
+  }, [activeSession?.id, activePitcher?.id, activeSession?.status]);
 
   // Derive current count from latest pitch
   const latestPitch = sessionPitches[sessionPitches.length - 1];
@@ -614,6 +643,8 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = ({
         teamPlayers={teamPlayers}
         allEventSessions={allEventSessions || []}
         onStartSession={onStartSession}
+        presetId={team?.pitchRulePresetId || 'usa_pitch_smart'}
+        cumulativeTotals={cumulativeTotals}
       />
 
       {/* Main Recording Workspace */}

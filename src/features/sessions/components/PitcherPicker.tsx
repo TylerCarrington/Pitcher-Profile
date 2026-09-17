@@ -13,6 +13,9 @@ import {
   History,
   CheckCircle2,
 } from 'lucide-react';
+import { PitchSmartBadge } from '../../players/components/PitchSmartBadge';
+import { getPitchesForSession } from '../../pitches/pitchService';
+import { useTeam } from '../../teams/hooks/useTeam';
 
 export interface PitcherPickerProps {
   event?: BaseballEvent | null;
@@ -42,11 +45,13 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
   onClosePicker,
 }) => {
   const [sessionToDelete, setSessionToDelete] = useState<PitcherSession | null>(null);
+  const { selectedTeam } = useTeam();
+  const teamPresetId = selectedTeam?.pitchRulePresetId || 'usa_pitch_smart';
 
   const isGame = event?.type === 'game';
 
   return (
-    <div id="pitcher-picker-screen" className="w-full max-w-2xl mx-auto px-4 py-6 space-y-6 animate-in fade-in">
+    <div id="pitcher-picker-screen" className="w-full max-w-4xl mx-auto px-4 py-6 space-y-6 animate-in fade-in">
       <div className="flex items-center justify-between gap-3">
         <button
           type="button"
@@ -208,15 +213,15 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
 
       {/* Existing / Completed Pitching Sessions in this Event */}
       {allEventSessions.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 sm:p-6 space-y-4">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <History className="w-4 h-4 text-emerald-600" />
+              <History className="w-4 h-4 text-emerald-600 shrink-0" />
               <h3 className="font-bold text-slate-900 text-sm">
                 Sessions in this Event ({allEventSessions.length})
               </h3>
             </div>
-            <span className="text-[11px] text-slate-400">
+            <span className="text-[11px] text-slate-400 hidden xs:inline">
               Tap Reopen if ended accidentally
             </span>
           </div>
@@ -227,93 +232,155 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
               const isCurrentActive = activeSession?.id === session.id;
               const isSessionActive = session.status === 'active';
 
+              const sessionPitches = getPitchesForSession(session.id);
+              const pitchesCount = sessionPitches.length;
+              const ballsCount = sessionPitches.filter((p) => p.outcome === 'ball').length;
+              const strikesCount = sessionPitches.filter(
+                (p) => p.outcome === 'strike' || p.outcome === 'foul' || p.outcome === 'in_play',
+              ).length;
+              const strikePercent =
+                pitchesCount > 0 ? Math.round((strikesCount / pitchesCount) * 100) : 0;
+
               return (
                 <div
                   key={session.id}
                   id={`event-session-row-${session.id}`}
-                  className="p-3.5 flex items-center justify-between gap-3 bg-white hover:bg-slate-50 transition"
+                  className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white hover:bg-slate-50/70 transition"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 font-bold flex items-center justify-center text-xs border border-slate-200 shrink-0">
-                      #{pitcher?.jerseyNumber || '?'}
+                  {/* Pitcher Info (Left): Avatar + Name + RHP + Status + Strike Rate */}
+                  <div className="flex items-center gap-3">
+                    <div className="relative shrink-0">
+                      {pitcher?.imageUrl ? (
+                        <img
+                          src={pitcher.imageUrl}
+                          alt={pitcher.name}
+                          className="w-12 h-12 rounded-full object-cover border-2 border-slate-200 shadow-xs"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-slate-100 border-2 border-slate-300 flex items-center justify-center font-black text-slate-600 text-lg">
+                          #{pitcher?.jerseyNumber || '?'}
+                        </div>
+                      )}
+                      <span className="absolute -bottom-1 -right-1 bg-slate-900 text-white font-bold text-[10px] px-1.5 rounded-full border border-white">
+                        #{pitcher?.jerseyNumber || '?'}
+                      </span>
                     </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-slate-900 truncate">
+
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-bold text-base text-slate-900 whitespace-nowrap">
                           {pitcher?.name || 'Pitcher'}
+                        </h4>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase shrink-0">
+                          {pitcher?.throws || 'R'}HP
                         </span>
                         {isCurrentActive ? (
-                          <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider shrink-0">
                             Tracking Now
                           </span>
                         ) : isSessionActive ? (
-                          <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold">
+                          <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold uppercase tracking-wider shrink-0">
                             Active
                           </span>
                         ) : (
-                          <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-semibold">
+                          <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-semibold uppercase tracking-wider shrink-0">
                             Completed
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-400">
-                        Started {new Date(session.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                      <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        <span>{strikePercent}% Strike Rate</span>
+                        <span>&bull;</span>
+                        <span>{pitchesCount} {pitchesCount === 1 ? 'Pitch' : 'Pitches'}</span>
+                        <span>&bull;</span>
+                        <span className="text-slate-400">
+                          Started {new Date(session.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                        </span>
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    {isCurrentActive ? (
-                      <button
-                        type="button"
-                        onClick={onClosePicker}
-                        className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer"
-                      >
-                        Resume View
-                      </button>
-                    ) : isSessionActive ? (
-                      <button
-                        type="button"
-                        id={`switch-session-${session.id}`}
-                        onClick={() => {
-                          onStartSession(session.pitcherId);
-                          if (onClosePicker) onClosePicker();
-                        }}
-                        className="px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition shadow-xs cursor-pointer"
-                      >
-                        Switch to Pitcher
-                      </button>
-                    ) : (
-                      <>
-                        {onReopenSession && (
-                          <button
-                            type="button"
-                            id={`reopen-session-${session.id}`}
-                            onClick={() => {
-                              onReopenSession(session.id);
-                              if (onClosePicker) onClosePicker();
-                            }}
-                            className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition flex items-center gap-1 shadow-xs cursor-pointer"
-                            title="Reopen ended session"
-                          >
-                            <RotateCcw className="w-3 h-3 text-slate-500" />
-                            <span>Reopen</span>
-                          </button>
-                        )}
+                  {/* Stats Box, PitchSmart Badge & Action Buttons (Right) */}
+                  <div className="flex flex-wrap items-center gap-3 md:ml-auto">
+                    <PitchSmartBadge
+                      pitchCount={pitchesCount}
+                      seasonAge={pitcher?.seasonAge || 12}
+                      eventDate={event?.scheduledAt}
+                      playerName={pitcher?.name}
+                      presetId={teamPresetId}
+                      isBullpen={event?.type === 'bullpen'}
+                    />
 
-                        {onDeleteSession && (
-                          <button
-                            type="button"
-                            id={`delete-session-${session.id}`}
-                            onClick={() => setSessionToDelete(session)}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                            title="Delete session"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </>
-                    )}
+                    <div className="flex items-center gap-3 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
+                      <div className="text-center">
+                        <div className="text-[10px] uppercase font-bold text-slate-400">Pitches</div>
+                        <div className="font-mono font-bold text-slate-900">{pitchesCount}</div>
+                      </div>
+                      <div className="h-5 w-px bg-slate-200" />
+                      <div className="text-center">
+                        <div className="text-[10px] uppercase font-bold text-amber-600">Balls</div>
+                        <div className="font-mono font-bold text-amber-600">{ballsCount}</div>
+                      </div>
+                      <div className="h-5 w-px bg-slate-200" />
+                      <div className="text-center">
+                        <div className="text-[10px] uppercase font-bold text-emerald-600">Strikes</div>
+                        <div className="font-mono font-bold text-emerald-600">{strikesCount}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isCurrentActive ? (
+                        <button
+                          type="button"
+                          onClick={onClosePicker}
+                          className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer transition active:scale-95"
+                        >
+                          Resume View
+                        </button>
+                      ) : isSessionActive ? (
+                        <button
+                          type="button"
+                          id={`switch-session-${session.id}`}
+                          onClick={() => {
+                            onStartSession(session.pitcherId);
+                            if (onClosePicker) onClosePicker();
+                          }}
+                          className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition shadow-xs cursor-pointer active:scale-95"
+                        >
+                          Switch to Pitcher
+                        </button>
+                      ) : (
+                        <>
+                          {onReopenSession && (
+                            <button
+                              type="button"
+                              id={`reopen-session-${session.id}`}
+                              onClick={() => {
+                                onReopenSession(session.id);
+                                if (onClosePicker) onClosePicker();
+                              }}
+                              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                              title="Reopen ended session"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                              <span>Reopen</span>
+                            </button>
+                          )}
+
+                          {onDeleteSession && (
+                            <button
+                              type="button"
+                              id={`delete-session-${session.id}`}
+                              onClick={() => setSessionToDelete(session)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                              title="Delete session"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

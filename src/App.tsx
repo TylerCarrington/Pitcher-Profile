@@ -198,31 +198,22 @@ export default function App() {
   const selectedEvent = selectedEventId ? getEventById(selectedEventId) || null : null;
 
   // Active session
-  const activeSessionCandidate = activeSessionId ? getSessionById(activeSessionId) : null;
-  const liveActiveSession = selectedEvent ? getActiveSessionForEvent(selectedEvent.id) || null : null;
-  const activeSession = selectedEvent
-    ? (activeSessionCandidate && activeSessionCandidate.status === 'active'
-        ? activeSessionCandidate
-        : liveActiveSession)
+  const activeSession = (selectedEvent && activeSessionId)
+    ? getSessionById(activeSessionId) || null
     : null;
+    
   const activePitcher =
-    activeSession && activeSession.pitcherId
+    activeSession && activeSession.status === 'active' && activeSession.pitcherId
       ? getPlayerById(activeSession.pitcherId) || null
       : null;
 
-  // Automatically synchronize activeSessionId with any active session in the event (including remote reopens from other coaches)
+  // Automatically synchronize activeSessionId with any active session in the event
+  // Ensures we clear activeSessionId if the current session is ended remotely or by another coach.
   useEffect(() => {
-    if (selectedEvent) {
-      const liveActive = getActiveSessionForEvent(selectedEvent.id);
-      if (liveActive && liveActive.status === 'active') {
-        if (activeSessionId !== liveActive.id) {
-          setActiveSessionId(liveActive.id);
-        }
-      } else if (activeSessionId) {
-        const candidate = getSessionById(activeSessionId);
-        if (!candidate || candidate.status === 'completed') {
-          setActiveSessionId(null);
-        }
+    if (selectedEvent && activeSessionId) {
+      const candidate = getSessionById(activeSessionId);
+      if (!candidate || candidate.status === 'completed') {
+        setActiveSessionId(null);
       }
     }
   }, [selectedEvent?.id, selectedEvent?.status, activeSessionId, storeTick]);

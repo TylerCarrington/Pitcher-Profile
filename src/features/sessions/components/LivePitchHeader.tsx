@@ -112,9 +112,9 @@ export const LivePitchHeader: React.FC<LivePitchHeaderProps> = (props) => {
       id="live-pitch-header"
       className="sticky top-0 z-20 w-full bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white shadow-md transition-all"
     >
-      <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2 space-y-2 sm:space-y-0 sm:flex sm:items-center sm:justify-between sm:gap-3">
-        {/* Top Row on Mobile: Pitcher Info (Left) & End Session/Event Actions (Top Right) */}
-        <div className="flex items-center justify-between gap-2 min-w-0">
+      <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2 space-y-2">
+        {/* Top Row: Pitcher Info (Left) & Exit/End Actions (Right) */}
+        <div className="flex items-center justify-between gap-2 min-w-0 w-full">
           {/* Pitcher Info */}
           <div className="relative">
             {!pitcher ? (
@@ -284,8 +284,8 @@ export const LivePitchHeader: React.FC<LivePitchHeaderProps> = (props) => {
           </div>
         </div>
 
-        {/* Count & Pitch Smart Glance Hub */}
-        <div className="flex items-center justify-between sm:justify-end gap-1.5 sm:gap-3 pt-1 sm:pt-0">
+        {/* Count & Pitch Smart Glance Hub (Dedicated Second Row) */}
+        <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-4 pt-1.5 border-t border-slate-800/80">
           {/* Running Balls & Strikes Count */}
           <div
             id="count-display"

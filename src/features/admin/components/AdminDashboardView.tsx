@@ -53,9 +53,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
 
       // Seed with local store coaches
       local.coaches.forEach((c) => {
-        if (c && (c.email || c.id)) {
-          const key = (c.email || c.id).toLowerCase();
-          coachMap.set(key, c);
+        if (c) {
+          const rawKey = c.email || c.id;
+          if (rawKey && typeof rawKey === 'string') {
+            const key = rawKey.toLowerCase();
+            coachMap.set(key, c);
+          }
         }
       });
 
@@ -237,18 +240,20 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
     }
   };
 
+  const safeTeamSearch = (teamSearch || '').toLowerCase();
   const filteredTeams = teamsList.filter(
     (t) =>
-      t.name.toLowerCase().includes(teamSearch.toLowerCase()) ||
-      t.inviteCode?.toLowerCase().includes(teamSearch.toLowerCase()) ||
-      t.id.toLowerCase().includes(teamSearch.toLowerCase()),
+      (t?.name || '').toLowerCase().includes(safeTeamSearch) ||
+      (t?.inviteCode || '').toLowerCase().includes(safeTeamSearch) ||
+      (t?.id || '').toLowerCase().includes(safeTeamSearch),
   );
 
+  const safeCoachSearch = (coachSearch || '').toLowerCase();
   const filteredCoaches = coachesList.filter(
     (c) =>
-      c.name.toLowerCase().includes(coachSearch.toLowerCase()) ||
-      c.email.toLowerCase().includes(coachSearch.toLowerCase()) ||
-      c.id.toLowerCase().includes(coachSearch.toLowerCase()),
+      (c?.name || '').toLowerCase().includes(safeCoachSearch) ||
+      (c?.email || '').toLowerCase().includes(safeCoachSearch) ||
+      (c?.id || '').toLowerCase().includes(safeCoachSearch),
   );
 
   return (
@@ -502,13 +507,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
                 {filteredTeams.map((team) => {
                   const creatorCoach = coachesList.find(
                     (c) =>
-                      c.id === team.createdBy ||
-                      (c.email && team.creatorEmail && c.email.toLowerCase() === team.creatorEmail.toLowerCase()),
+                      (c.id && c.id === team.createdBy) ||
+                      (c.email && team.creatorEmail && typeof c.email === 'string' && typeof team.creatorEmail === 'string' && c.email.toLowerCase() === team.creatorEmail.toLowerCase()),
                   );
                   const memberCoaches = coachesList.filter(
                     (c) =>
-                      team.memberCoachIds?.includes(c.id) ||
-                      (c.email && team.memberCoachIds?.some((id) => id.toLowerCase().includes(c.email.toLowerCase()))),
+                      (c.id && team.memberCoachIds?.includes(c.id)) ||
+                      (c.email && typeof c.email === 'string' && team.memberCoachIds?.some((id) => typeof id === 'string' && id.toLowerCase().includes(c.email.toLowerCase()))),
                   );
                   const teamPlayers = storeData.players.filter((p) => p.teamId === team.id);
                   const teamEvents = storeData.events.filter((e) => e.teamId === team.id);
@@ -678,10 +683,10 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
                 {filteredCoaches.map((coach) => {
                   const ownedTeams = teamsList.filter(
                     (t) =>
-                      t.createdBy === coach.id ||
-                      t.memberCoachIds?.includes(coach.id) ||
-                      (coach.email && t.creatorEmail?.toLowerCase() === coach.email.toLowerCase()) ||
-                      (coach.email && t.memberCoachIds?.some((id) => id.toLowerCase().includes(coach.email.toLowerCase()))),
+                      (coach.id && t.createdBy === coach.id) ||
+                      (coach.id && t.memberCoachIds?.includes(coach.id)) ||
+                      (coach.email && typeof coach.email === 'string' && t.creatorEmail && typeof t.creatorEmail === 'string' && t.creatorEmail.toLowerCase() === coach.email.toLowerCase()) ||
+                      (coach.email && typeof coach.email === 'string' && t.memberCoachIds?.some((id) => typeof id === 'string' && id.toLowerCase().includes(coach.email.toLowerCase()))),
                   );
 
                   return (
@@ -692,7 +697,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-emerald-500 text-slate-950 font-black text-sm flex items-center justify-center shrink-0 border border-emerald-400/40">
-                            {coach.name.charAt(0)}
+                            {coach.name?.charAt(0) || coach.email?.charAt(0) || 'C'}
                           </div>
                           <div>
                             <h3 className="font-bold text-white text-sm">{coach.name}</h3>

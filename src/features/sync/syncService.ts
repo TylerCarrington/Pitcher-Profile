@@ -14,10 +14,10 @@ let coachProfileTimer: any = null;
 export function getCoachDocId(coach?: Coach | null): string | null {
   const current = coach || getCurrentCoach();
   if (!current) return null;
-  if (current.email) {
+  if (current.email && typeof current.email === 'string') {
     return current.email.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
   }
-  return current.googleId || current.id;
+  return current.googleId || current.id || null;
 }
 
 
@@ -274,11 +274,15 @@ export function mergeAppData(local: AppData, remote: any): AppData {
     if (!Array.isArray(remoteCoaches)) return localCoaches;
     const map = new Map<string, Coach>();
     localCoaches.forEach((c) => {
-      if (c && (c.id || c.email)) map.set((c.email || c.id).toLowerCase(), c);
+      const rawKey = c?.email || c?.id;
+      if (c && rawKey && typeof rawKey === 'string') {
+        map.set(rawKey.toLowerCase(), c);
+      }
     });
     remoteCoaches.forEach((c) => {
-      if (c && (c.id || c.email)) {
-        const key = (c.email || c.id).toLowerCase();
+      const rawKey = c?.email || c?.id;
+      if (c && rawKey && typeof rawKey === 'string') {
+        const key = rawKey.toLowerCase();
         map.set(key, { ...(map.get(key) || {}), ...c });
       }
     });

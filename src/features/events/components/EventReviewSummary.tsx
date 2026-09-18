@@ -103,6 +103,7 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = (props) => 
                   session={session}
                   isExpanded={isExpanded}
                   event={event}
+                  team={team}
                   currentCoach={currentCoach}
                   allCoaches={allCoaches}
                   onToggleExpand={() => setExpandedPitcherId(isExpanded ? null : pitcher.id)}

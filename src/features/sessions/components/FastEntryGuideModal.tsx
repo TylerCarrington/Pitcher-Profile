@@ -70,6 +70,13 @@ export const FastEntryGuideModal: React.FC<FastEntryGuideModalProps> = ({
                 <span className="font-semibold text-slate-800">Direct Outcome Logging:</span> Location is always optional. Tap BALL, STRIKE, FOUL, or IN-PLAY directly for lightning-fast tracking.
               </div>
             </div>
+
+            <div className="flex items-start gap-2.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mt-1.5 shrink-0" />
+              <div>
+                <span className="font-semibold text-slate-800">Instant Undo &amp; Shortcut:</span> Made a mistake? Tap the "Undo Pitch" button on the scoring panel, the scoreboard button, or press <kbd className="font-mono text-[10px] bg-slate-200 px-1 py-0.5 rounded border border-slate-300">Cmd+Z</kbd> / <kbd className="font-mono text-[10px] bg-slate-200 px-1 py-0.5 rounded border border-slate-300">Ctrl+Z</kbd> / <kbd className="font-mono text-[10px] bg-slate-200 px-1 py-0.5 rounded border border-slate-300">U</kbd> to restore previous count and pitch counts automatically.
+              </div>
+            </div>
           </div>
         </div>
 

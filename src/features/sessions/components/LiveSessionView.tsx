@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   BaseballEvent,
   PitcherSession,
@@ -29,7 +29,8 @@ import { EndEventModal } from './EndEventModal';
 import { PitchLocationPicker } from '../../pitches/components/PitchLocationPicker';
 import { PitchOutcomeButtons } from '../../pitches/components/PitchOutcomeButtons';
 import { PitchHistory } from '../../pitches/components/PitchHistory';
-import { Info } from 'lucide-react';
+import { formatPitchOutcomeDescription } from '../../pitches/utils/pitchFormatters';
+import { Info, Undo2 } from 'lucide-react';
 import { useEvent } from '../../events/hooks/useEvent';
 import { useTeam } from '../../teams/hooks/useTeam';
 import { useAuth } from '../../auth/hooks/useAuth';
@@ -60,6 +61,7 @@ export interface LiveSessionViewProps {
   }) => void;
   onUpdatePitch?: (pitchUpdate: Partial<Pitch> & { id: string; sessionId: string }) => void;
   onDeletePitch?: (pitchId: string, sessionId: string) => void;
+  onUndoPitch?: (sessionId?: string) => void;
   onSaveNotes?: (sessionId: string, coachId: string, notes: string) => void;
   onBackToTeam?: () => void;
   onUpdateOuts?: (outs: number) => void;
@@ -87,6 +89,7 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
   const onRecordPitch = props.onRecordPitch ?? eventCtx.recordPitch;
   const onUpdatePitch = props.onUpdatePitch ?? eventCtx.updatePitch;
   const onDeletePitch = props.onDeletePitch ?? eventCtx.deletePitch;
+  const onUndoPitch = props.onUndoPitch ?? eventCtx.undoPitch;
   const onSaveNotes = props.onSaveNotes ?? eventCtx.saveNotes;
   const onBackToTeam = props.onBackToTeam ?? (() => eventCtx.selectEvent(null));
   const onUpdateOuts = props.onUpdateOuts ?? eventCtx.updateOuts;
@@ -99,6 +102,66 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
   const [selectedPitchType, setSelectedPitchType] = useState<PitchType>('fastball');
   const [autoLogNotice, setAutoLogNotice] = useState<string | null>(null);
   const isAutoLoggingRef = useRef(false);
+
+  // Derive the latest pitch in this active session
+  const latestPitch = sessionPitches.length > 0 ? sessionPitches[sessionPitches.length - 1] : null;
+
+  // Revert/Undo the most recent pitch in the session
+  const handleUndoPreviousPitch = useCallback(() => {
+    if (!activeSession || sessionPitches.length === 0) return;
+    const lastPitch = sessionPitches[sessionPitches.length - 1];
+    if (!lastPitch) return;
+
+    if (onUndoPitch) {
+      onUndoPitch(activeSession.id);
+    } else {
+      onDeletePitch(lastPitch.id, lastPitch.sessionId || activeSession.id);
+    }
+
+    setPendingLocation(null);
+    setPendingStrike(false);
+    setStrikeSourceLocation(null);
+
+    const outcomeDesc = formatPitchOutcomeDescription(lastPitch);
+    setAutoLogNotice(
+      `Undid Pitch #${lastPitch.pitchNumber} (${outcomeDesc}) • Count restored to ${lastPitch.ballsBefore}-${lastPitch.strikesBefore}`
+    );
+    setTimeout(() => {
+      setAutoLogNotice((prev) =>
+        prev?.startsWith(`Undid Pitch #${lastPitch.pitchNumber}`) ? null : prev
+      );
+    }, 3500);
+  }, [activeSession, sessionPitches, onUndoPitch, onDeletePitch]);
+
+  // Global Keyboard Shortcuts (Cmd+Z / Ctrl+Z / Key U) to quickly undo the last recorded pitch
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+
+      const isUndoCombo =
+        (e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === 'z' || e.key === 'Z');
+      const isKeyU = !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === 'u' || e.key === 'U');
+
+      if (isUndoCombo || isKeyU) {
+        if (activeSession && sessionPitches.length > 0) {
+          e.preventDefault();
+          handleUndoPreviousPitch();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeSession, sessionPitches.length, handleUndoPreviousPitch]);
 
   // Compute multi-day & rolling cumulative totals for active pitcher
   const cumulativeTotals = useMemo(() => {
@@ -154,7 +217,6 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
   }, [activeSession?.id, activePitcher?.id, activeSession?.status]);
 
   // Derive current count from latest pitch
-  const latestPitch = sessionPitches[sessionPitches.length - 1];
   const currentBalls = latestPitch ? latestPitch.ballsAfter : 0;
   const currentStrikes = latestPitch ? latestPitch.strikesAfter : 0;
   const currentPitchCount = sessionPitches.length;
@@ -278,10 +340,21 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
 
   return (
     <div id="active-live-session" className="min-h-screen pb-16 bg-slate-100/70">
-      {/* Auto-Log Visual Banner */}
+      {/* Auto-Log / Undo Visual Notification Banner */}
       {autoLogNotice && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-emerald-600 text-white font-bold text-xs px-4 py-2 rounded-full shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-3">
-          <span>⚡</span>
+        <div
+          id="live-session-action-notice"
+          className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 text-white font-bold text-xs px-4 py-2 rounded-full shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-3 border ${
+            autoLogNotice.startsWith('Undid')
+              ? 'bg-amber-600 border-amber-400/50 shadow-amber-900/20'
+              : 'bg-emerald-600 border-emerald-400/50 shadow-emerald-900/20'
+          }`}
+        >
+          {autoLogNotice.startsWith('Undid') ? (
+            <Undo2 className="w-3.5 h-3.5 text-amber-100 shrink-0" />
+          ) : (
+            <span>⚡</span>
+          )}
           <span>{autoLogNotice}</span>
         </div>
       )}
@@ -312,6 +385,8 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
         cumulativeTotals={cumulativeTotals}
         teamPlayers={teamPlayers}
         allEventSessions={allEventSessions}
+        lastPitch={latestPitch}
+        onUndoPitch={sessionPitches.length > 0 ? handleUndoPreviousPitch : undefined}
         onStartSession={onStartSession}
         onBackToTeam={onBackToTeam}
         onChangePitcher={() => setShowPitcherPicker(true)}
@@ -374,6 +449,8 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
               strikeSourceLocation={strikeSourceLocation}
               selectedPitchType={selectedPitchType}
               autoLogNotice={autoLogNotice}
+              lastPitch={latestPitch}
+              onUndoPitch={sessionPitches.length > 0 ? handleUndoPreviousPitch : undefined}
               onRecordPitch={handleRecordPitchFromButtons}
               onPendingStrikeChange={handlePendingStrikeChange}
               onPitchTypeChange={setSelectedPitchType}
@@ -402,9 +479,11 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
         {/* Pitch History List */}
         <PitchHistory
           pitches={sessionPitches}
+          eventType={event.type === 'game' ? 'game' : 'bullpen'}
           activePitcher={activePitcher}
           onUpdatePitch={onUpdatePitch}
           onDeletePitch={onDeletePitch}
+          onUndoPitch={sessionPitches.length > 0 ? handleUndoPreviousPitch : undefined}
           gameMetrics={gameMetrics}
         />
       </main>

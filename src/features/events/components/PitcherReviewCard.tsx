@@ -1,11 +1,12 @@
-import React from 'react';
-import { Target, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
-import { PitcherSession, Pitch, BaseballEvent, Coach, Player } from '../../../types';
+import React, { useState, useMemo } from 'react';
+import { Target, ChevronDown, ChevronUp, MessageSquare, Download, FileImage } from 'lucide-react';
+import { PitcherSession, Pitch, BaseballEvent, Coach, Player, Team } from '../../../types';
 import { calculateGamePitchingMetrics, getSessionsForEvent } from '../../../storage';
 import { PitchSmartBadge } from '../../players/components/PitchSmartBadge';
 import { StrikeZoneHeatmap } from '../../pitches/components/StrikeZoneHeatmap';
 import { PitcherNotesEditor } from './PitcherNotesEditor';
 import { BullpenAdjustmentPanel } from './BullpenAdjustmentPanel';
+import { SinglePlayerSessionExportModal } from './SinglePlayerSessionExportModal';
 
 export interface PitcherReviewCardProps {
   pitcher: Player;
@@ -21,6 +22,7 @@ export interface PitcherReviewCardProps {
   gameMetrics?: ReturnType<typeof calculateGamePitchingMetrics>;
   currentCoach?: Coach | null;
   event?: BaseballEvent | null;
+  team?: Team | null;
   allCoaches?: Coach[];
   onToggleExpand: (pitcherId: string | null) => void;
   onSaveNotes?: (sessionId: string, coachId: string, notes: string) => void;
@@ -41,11 +43,13 @@ export const PitcherReviewCard: React.FC<PitcherReviewCardProps> = ({
   gameMetrics: customGameMetrics,
   currentCoach = null,
   event = null,
+  team = null,
   allCoaches = [],
   onToggleExpand,
   onSaveNotes,
   onUpdateSessionUncountedPitches,
 }) => {
+  const [showExportModal, setShowExportModal] = useState(false);
   const uncountedPitches = customUncounted ?? session?.uncountedPitches ?? 0;
   const totalPitches = customTotal ?? (pitchesThrown + uncountedPitches);
   const strikePercent =
@@ -54,6 +58,32 @@ export const PitcherReviewCard: React.FC<PitcherReviewCardProps> = ({
   const gameMetrics = customGameMetrics ?? calculateGamePitchingMetrics(pitches);
   const isGame = event?.type === 'game';
   const isBullpen = event?.type === 'bullpen';
+
+  // Gather notes for this pitcher
+  const eventSessions = useMemo(() => (event ? getSessionsForEvent(event.id) : []), [event]);
+  const pitcherSessions = useMemo(() => eventSessions.filter((s) => s.pitcherId === pitcher.id), [eventSessions, pitcher.id]);
+  const targetSession = session || pitcherSessions[0];
+  const currentCoachId = currentCoach?.id;
+  const initialCoachNote = (targetSession && currentCoachId && targetSession.coachNotes?.[currentCoachId]) || '';
+
+  const exportCoachNotes = useMemo(() => {
+    const list: { authorName: string; noteText: string }[] = [];
+    pitcherSessions.forEach((s) => {
+      Object.entries(s?.coachNotes || {}).forEach(([coachId, note]) => {
+        if (typeof note === 'string' && note.trim().length > 0) {
+          const author = allCoaches.find((c) => c.id === coachId);
+          const cleanText = note.replace(/^\[SHARED\]\s*/, '').trim();
+          if (cleanText) {
+            const authorName = author?.name || (coachId === currentCoachId ? currentCoach?.name || 'You' : 'Coach');
+            if (!list.some((item) => item.authorName === authorName && item.noteText === cleanText)) {
+              list.push({ authorName, noteText: cleanText });
+            }
+          }
+        }
+      });
+    });
+    return list;
+  }, [pitcherSessions, allCoaches, currentCoachId, currentCoach?.name]);
   return (
     <div
       id={`pitcher-summary-${pitcher.id}`}
@@ -178,14 +208,24 @@ export const PitcherReviewCard: React.FC<PitcherReviewCardProps> = ({
       {/* Expanded Scouting Analysis & Strike Zone Breakdown */}
       {isExpanded && (
         <div className="p-4 sm:p-6 bg-slate-50/50 space-y-5">
-          <div>
-            <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-              <Target className="w-4 h-4 text-emerald-600" />
-              <span>{pitcher.name}'s Event Strike Zone &amp; Arsenal Breakdown</span>
-            </h4>
-            <p className="text-xs text-slate-500">
-              Interactive breakdown of pitch locations, outcomes, and arsenal mix for this event.
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-slate-200/80">
+            <div>
+              <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                <Target className="w-4 h-4 text-emerald-600" />
+                <span>{pitcher.name}'s Event Strike Zone &amp; Arsenal Breakdown</span>
+              </h4>
+              <p className="text-xs text-slate-500">
+                Interactive breakdown of pitch locations, outcomes, and arsenal mix for this event.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowExportModal(true)}
+              className="self-start sm:self-auto px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition flex items-center gap-2 text-xs font-bold cursor-pointer active:scale-95"
+            >
+              <Download className="w-3.5 h-3.5 text-white" />
+              <span>Export</span>
+            </button>
           </div>
 
           {session && (
@@ -290,6 +330,25 @@ export const PitcherReviewCard: React.FC<PitcherReviewCardProps> = ({
             );
           })()}
         </div>
+      )}
+
+      {/* PNG Export Modal */}
+      {showExportModal && (
+        <SinglePlayerSessionExportModal
+          pitcher={pitcher}
+          pitches={pitches}
+          session={session}
+          event={event}
+          team={team}
+          pitchesThrown={pitchesThrown}
+          balls={balls}
+          strikes={strikes}
+          totalPitches={totalPitches}
+          strikePercent={strikePercent}
+          gameMetrics={gameMetrics}
+          coachNotes={exportCoachNotes}
+          onClose={() => setShowExportModal(false)}
+        />
       )}
     </div>
   );

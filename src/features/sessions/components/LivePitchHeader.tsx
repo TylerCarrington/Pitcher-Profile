@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { Player, BaseballEvent, PitcherSession, PitchRulePresetId } from '../../../types';
+import { Player, BaseballEvent, PitcherSession, PitchRulePresetId, Pitch } from '../../../types';
 import { PitchSmartBadge } from '../../players/components/PitchSmartBadge';
 import { calculatePitchSmartStatus, CumulativePitchTotals } from '../../../utils/pitchSmart';
 import { getPlayerById } from '../../players/playerService';
-import { User, LogOut, CheckCircle2, AlertTriangle, ChevronRight, ArrowLeft, ChevronDown } from 'lucide-react';
+import { formatPitchOutcomeDescription } from '../../pitches/utils/pitchFormatters';
+import { User, LogOut, CheckCircle2, AlertTriangle, ChevronRight, ArrowLeft, ChevronDown, Undo2 } from 'lucide-react';
 
 export interface LivePitchHeaderProps {
   pitcher?: Player | null;
@@ -40,6 +41,9 @@ export interface LivePitchHeaderProps {
   presetId?: PitchRulePresetId;
   teamPresetId?: PitchRulePresetId;
   cumulativeTotals?: Partial<CumulativePitchTotals>;
+  // Undo previous pitch support
+  lastPitch?: Pitch | null;
+  onUndoPitch?: () => void;
 }
 
 export const LivePitchHeader: React.FC<LivePitchHeaderProps> = (props) => {
@@ -326,6 +330,21 @@ export const LivePitchHeader: React.FC<LivePitchHeaderProps> = (props) => {
               </div>
             </div>
           </div>
+
+          {/* Quick Undo Last Pitch Button */}
+          {props.lastPitch && props.onUndoPitch && (
+            <button
+              type="button"
+              id="header-undo-pitch-btn"
+              onClick={props.onUndoPitch}
+              className="flex items-center gap-1.5 bg-slate-950/90 hover:bg-slate-800 active:bg-slate-900 text-slate-300 hover:text-amber-300 px-2 sm:px-2.5 py-1.5 rounded-lg border border-slate-800 hover:border-amber-400/50 text-xs font-bold transition active:scale-95 cursor-pointer shadow-xs shrink-0"
+              title={`Undo Pitch #${props.lastPitch.pitchNumber} (${formatPitchOutcomeDescription(props.lastPitch)})`}
+            >
+              <Undo2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span className="hidden xs:inline">Undo</span>
+              <span className="font-mono text-amber-400 font-bold">#{props.lastPitch.pitchNumber}</span>
+            </button>
+          )}
 
           {/* Pitcher Live S:B Ratio Header Badge */}
           <div

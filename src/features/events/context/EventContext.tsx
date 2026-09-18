@@ -31,6 +31,7 @@ import {
   addPitchToSession,
   updatePitch as storageUpdatePitch,
   deletePitch as storageDeletePitch,
+  undoPreviousPitch as storageUndoPreviousPitch,
   getPlayerById,
   subscribeToStore,
 } from '../../../storage';
@@ -74,6 +75,7 @@ export interface EventContextType {
   }) => Pitch;
   updatePitch: (pitchUpdate: Partial<Pitch> & { id: string; sessionId: string }) => void;
   deletePitch: (pitchId: string, sessionId: string) => void;
+  undoPitch: (sessionId?: string) => Pitch | null;
   saveNotes: (sessionId: string, coachId: string, notes: string) => void;
   updateSessionUncountedPitches: (sessionId: string, count: number) => void;
   updateOuts: (outs: number) => void;
@@ -292,6 +294,19 @@ export const EventProvider: React.FC<EventProviderProps> = ({ children }) => {
     [refreshEventData],
   );
 
+  const undoPitch = useCallback(
+    (sessionId?: string) => {
+      const targetSessionId = sessionId || activeSessionId;
+      if (!targetSessionId) return null;
+      const undone = storageUndoPreviousPitch(targetSessionId);
+      if (undone) {
+        refreshEventData();
+      }
+      return undone;
+    },
+    [activeSessionId, refreshEventData],
+  );
+
   const saveNotes = useCallback(
     (sessionId: string, coachId: string, notes: string) => {
       updateSessionNotes(sessionId, coachId, notes);
@@ -347,6 +362,7 @@ export const EventProvider: React.FC<EventProviderProps> = ({ children }) => {
         recordPitch,
         updatePitch,
         deletePitch,
+        undoPitch,
         saveNotes,
         updateSessionUncountedPitches,
         updateOuts,

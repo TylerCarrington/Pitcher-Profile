@@ -137,6 +137,7 @@ export function addPitchToSession(params: {
   }
 
   data.pitches.push(newPitch);
+  recalculateSessionPitches(data, params.sessionId);
   saveData(data);
   syncTeamByEventId(params.eventId, data);
   return newPitch;
@@ -175,6 +176,25 @@ export function deletePitch(pitchId: string, sessionId: string): void {
   recalculateSessionPitches(data, sessionId);
   saveData(data);
   syncTeamBySessionId(sessionId, data);
+}
+
+/**
+ * Undoes (deletes) the most recently recorded pitch in the given session.
+ * Returns the undone pitch if found, or null if the session has no pitches.
+ */
+export function undoPreviousPitch(sessionId: string): Pitch | null {
+  const data = loadData();
+  const sessionPitches = data.pitches
+    .filter((p) => p.sessionId === sessionId)
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+  if (sessionPitches.length === 0) {
+    return null;
+  }
+
+  const lastPitch = sessionPitches[sessionPitches.length - 1];
+  deletePitch(lastPitch.id, sessionId);
+  return lastPitch;
 }
 
 function calculateCountAfter(
@@ -237,6 +257,11 @@ function recalculateSessionPitches(data: AppData, sessionId: string) {
     currentBalls = ballsAfter;
     currentStrikes = strikesAfter;
   });
+
+  const parentSession = data.sessions.find((s) => s.id === sessionId);
+  if (parentSession) {
+    parentSession.updatedAt = new Date().toISOString();
+  }
 }
 
 export function calculateGamePitchingMetrics(pitches: Pitch[]): {

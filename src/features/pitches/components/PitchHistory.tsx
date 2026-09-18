@@ -3,20 +3,24 @@ import { Pitch, EventType } from '../../../types';
 import { PitchHistoryItem } from './PitchHistoryItem';
 import { PitchEditModal } from './PitchEditModal';
 import { PitchDeleteModal } from './PitchDeleteModal';
-import { Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { Clock, ChevronDown, ChevronUp, Undo2 } from 'lucide-react';
 
 export interface PitchHistoryProps {
   pitches: Pitch[];
-  eventType: EventType;
+  eventType?: EventType;
   onUpdatePitch: (pitch: Partial<Pitch> & { id: string; sessionId: string }) => void;
   onDeletePitch: (pitchId: string, sessionId: string) => void;
+  onUndoPitch?: () => void;
+  gameMetrics?: any;
+  activePitcher?: any;
 }
 
 export const PitchHistory: React.FC<PitchHistoryProps> = ({
   pitches,
-  eventType,
+  eventType = 'game',
   onUpdatePitch,
   onDeletePitch,
+  onUndoPitch,
 }) => {
   const [editingPitch, setEditingPitch] = useState<Pitch | null>(null);
   const [deletingPitchId, setDeletingPitchId] = useState<string | null>(null);
@@ -41,6 +45,21 @@ export const PitchHistory: React.FC<PitchHistoryProps> = ({
           </h3>
         </div>
         <div className="flex items-center gap-2 text-slate-500">
+          {pitches.length > 0 && onUndoPitch && (
+            <button
+              type="button"
+              id="pitch-history-undo-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onUndoPitch();
+              }}
+              className="text-xs font-bold text-amber-800 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-md transition flex items-center gap-1 shadow-2xs active:scale-95 cursor-pointer"
+              title="Undo the most recent pitch in this session"
+            >
+              <Undo2 className="w-3 h-3 text-amber-600" />
+              <span>Undo Last Pitch</span>
+            </button>
+          )}
           <span className="text-xs">Latest first</span>
           {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </div>

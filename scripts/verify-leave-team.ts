@@ -21,7 +21,7 @@ const mockStorage: Record<string, string> = {};
   },
 };
 
-import { leaveTeam, removeCoachFromTeam, getTeamsForCoach } from '../src/features/teams/teamService';
+import { leaveTeam, removeCoachFromTeam, deleteTeam, getTeamsForCoach } from '../src/features/teams/teamService';
 import { mergeWithLWW } from '../src/features/sync/syncService';
 import { loadData, saveData } from '../src/store/localStore';
 import { Team, Coach } from '../src/types';
@@ -101,6 +101,20 @@ const mergedResult = mergeWithLWW(updatedTeam, olderRemoteTeamDoc);
 assert(
   !mergedResult.memberCoachIds.includes(coachMember.id),
   'LWW Reconciliation preserves coach removal when merged against older remote snapshot'
+);
+
+// --- Test 4: Delete Team Permission Check (Non-owner/Non-admin should fail) ---
+const unauthorizedDeleteRes = deleteTeam(testTeam.id, coachMember.id);
+assert(
+  unauthorizedDeleteRes.success === false && Boolean(unauthorizedDeleteRes.error),
+  'Non-owner/non-admin coach is rejected when attempting to delete team'
+);
+
+// --- Test 5: Delete Team Permission Check (Owner/Creator or Admin should succeed) ---
+const authorizedDeleteRes = deleteTeam(testTeam.id, coachCreator.id);
+assert(
+  authorizedDeleteRes.success === true,
+  'Team owner/creator is allowed to delete team'
 );
 
 console.log('====================================================');

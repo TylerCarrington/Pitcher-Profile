@@ -40,6 +40,11 @@ export const TeamRoster: React.FC<TeamRosterProps> = ({
   onShowDeleteTeam
 }) => {
   const isSelectedTeamCreator = selectedTeam.createdBy === currentCoach.id;
+  const isOwnerOrAdmin =
+    isSelectedTeamCreator ||
+    currentCoach.email?.trim().toLowerCase() === 'tylercarringtonwa@gmail.com' ||
+    selectedTeam.createdBy === currentCoach.email ||
+    (currentCoach.email && `coach_email_${currentCoach.email.toLowerCase().replace(/[^a-z0-9]/g, '_')}` === selectedTeam.createdBy);
   const currentPreset = getPitchRulePreset(selectedTeam.pitchRulePresetId);
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
 
@@ -150,16 +155,18 @@ export const TeamRoster: React.FC<TeamRosterProps> = ({
                     <Edit2 className="w-3.5 h-3.5 text-emerald-500" />
                     <span className="hidden sm:inline">Edit Team</span>
                   </button>
-                  <button
-                    type="button"
-                    id="delete-team-btn"
-                    onClick={() => onShowDeleteTeam()}
-                    className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1 cursor-pointer"
-                    title="Delete Team"
-                  >
-                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                    <span className="hidden sm:inline">Delete Team</span>
-                  </button>
+                  {isOwnerOrAdmin && (
+                    <button
+                      type="button"
+                      id="delete-team-btn"
+                      onClick={() => onShowDeleteTeam()}
+                      className="px-2.5 py-1.5 text-xs font-semibold rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition flex items-center gap-1 cursor-pointer"
+                      title="Delete Team (Owner/Admin Only)"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                      <span className="hidden sm:inline">Delete Team</span>
+                    </button>
+                  )}
                 </div>
               </div>
     

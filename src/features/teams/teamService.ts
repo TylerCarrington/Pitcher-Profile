@@ -509,6 +509,21 @@ export function deleteTeam(teamId: string, coachId: string): { success: boolean;
   const team = data.teams.find((t) => t.id === teamId);
   if (!team) return { success: false, error: 'Team not found' };
 
+  // Authorization check: Only team creator (owner) or administrator can delete the team
+  const requester = data.coaches.find((c) => c.id === coachId) || { id: coachId, email: coachId };
+  const requesterEmail = requester.email?.trim().toLowerCase();
+  const isAdmin = requesterEmail === 'tylercarringtonwa@gmail.com' || coachId === 'admin';
+
+  const matchingIds = getMatchingCoachIdentifiers(data, coachId);
+  const isCreator = matchingIds.has(team.createdBy) || matchingIds.has(team.createdBy.toLowerCase());
+
+  if (!isAdmin && !isCreator) {
+    return {
+      success: false,
+      error: 'Only the team creator or an administrator can delete this team.',
+    };
+  }
+
   const now = new Date().toISOString();
 
   // Record tombstone locally to prevent resurrection from stale caches

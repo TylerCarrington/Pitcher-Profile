@@ -5,9 +5,21 @@ import { TeamProvider } from './features/teams/context/TeamContext';
 import { EventProvider } from './features/events/context/EventContext';
 import { AppRoutes } from './routes/AppRoutes';
 
+const getBasename = (): string | undefined => {
+  const base = import.meta.env.BASE_URL;
+  if (base && base !== './' && base !== '/') {
+    return base;
+  }
+  const pathname = window.location.pathname;
+  if (pathname.includes('/Pitcher-Profile')) {
+    return '/Pitcher-Profile';
+  }
+  return undefined;
+};
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={getBasename()}>
       <AuthProvider>
         <TeamProvider>
           <EventProvider>

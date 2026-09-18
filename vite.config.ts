@@ -9,13 +9,16 @@ export default defineConfig(() => {
   const buildDate = process.env.VITE_BUILD_DATE || new Date().toISOString();
   const commitSha = process.env.VITE_COMMIT_SHA || process.env.GITHUB_SHA || 'dev-local';
 
+  const repositoryName = process.env.GITHUB_REPOSITORY ? `/${process.env.GITHUB_REPOSITORY.split('/')[1]}/` : undefined;
+  const base = process.env.BASE_URL || repositoryName || './';
+
   return {
     define: {
       'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion),
       'import.meta.env.VITE_BUILD_DATE': JSON.stringify(buildDate),
       'import.meta.env.VITE_COMMIT_SHA': JSON.stringify(commitSha),
     },
-    base: '/', // Absolute base path for clean deep SPA routing
+    base,
     plugins: [
       react(),
       tailwindcss(),

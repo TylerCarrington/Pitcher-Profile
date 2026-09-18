@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BaseballEvent, Team, Coach, EventType } from '../../../types';
 import {
   Calendar,
@@ -13,6 +14,7 @@ import { TeamEventsList } from './TeamEventsList';
 import { useTeam } from '../../teams/hooks/useTeam';
 import { useEvent } from '../hooks/useEvent';
 import { useAuth } from '../../auth/hooks/useAuth';
+import { getCanonicalEventSlugForEvent } from '../../../storage';
 
 export interface EventManagementProps {
   currentCoach?: Coach | null;
@@ -25,7 +27,7 @@ export interface EventManagementProps {
     opponent?: string;
     location?: string;
     scheduledAt: string;
-  }) => void;
+  }) => BaseballEvent | undefined | void;
   onDeleteEvent?: (eventId: string) => void;
   onReopenEvent?: (eventId: string) => void;
 }
@@ -34,10 +36,19 @@ export const EventManagement: React.FC<EventManagementProps> = (props) => {
   const teamCtx = useTeam();
   const eventCtx = useEvent();
   const authCtx = useAuth();
+  const navigate = useNavigate();
 
   const team = props.team !== undefined ? props.team : teamCtx.selectedTeam;
   const events = props.events ?? teamCtx.teamEvents;
-  const onSelectEvent = props.onSelectEvent ?? ((ev: BaseballEvent) => eventCtx.selectEvent(ev.id));
+  const onSelectEvent = props.onSelectEvent ?? ((ev: BaseballEvent) => {
+    eventCtx.selectEvent(ev.id);
+    const slug = getCanonicalEventSlugForEvent(ev);
+    if (ev.status === 'ended') {
+      navigate(`/events/${slug}/review`);
+    } else {
+      navigate(`/events/${slug}`);
+    }
+  });
   const onCreateEvent = props.onCreateEvent ?? ((input) => eventCtx.createEvent(input));
   const onDeleteEvent = props.onDeleteEvent ?? eventCtx.deleteEvent;
   const onReopenEvent = props.onReopenEvent ?? eventCtx.reopenEvent;
@@ -59,7 +70,7 @@ export const EventManagement: React.FC<EventManagementProps> = (props) => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onCreateEvent({
+    const created = onCreateEvent({
       teamId: team.id,
       type: eventType,
       opponent: eventType === 'game' ? opponent.trim() || undefined : undefined,
@@ -70,6 +81,11 @@ export const EventManagement: React.FC<EventManagementProps> = (props) => {
     setOpponent('');
     setLocation('');
     setShowCreateModal(false);
+
+    if (created && 'id' in created) {
+      const slug = getCanonicalEventSlugForEvent(created as BaseballEvent);
+      navigate(`/events/${slug}`);
+    }
   };
 
   return (

@@ -9,15 +9,22 @@ interface UseUrlJoinOptions {
 
 export const useUrlJoin = ({ currentCoach, onTeamJoined }: UseUrlJoinOptions) => {
   const [joinNotification, setJoinNotification] = useState<string | null>(null);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   useEffect(() => {
     const handleUrlJoin = async () => {
       const params = new URLSearchParams(window.location.search);
-      const urlJoinCode = params.get('join');
+      const queryJoinCode = params.get('join');
+      const pathMatch = window.location.pathname.match(/\/join\/([^/]+)/i);
+      const pathJoinCode = pathMatch ? pathMatch[1] : null;
+      const urlJoinCode = queryJoinCode || pathJoinCode;
+
       if (urlJoinCode) {
         sessionStorage.setItem('pending_join_code', urlJoinCode);
-        const newUrl = window.location.pathname;
-        window.history.replaceState({}, '', newUrl);
+        if (queryJoinCode) {
+          const newUrl = window.location.pathname;
+          window.history.replaceState({}, '', newUrl);
+        }
       }
 
       const pendingCode = sessionStorage.getItem('pending_join_code') || urlJoinCode;
@@ -32,6 +39,7 @@ export const useUrlJoin = ({ currentCoach, onTeamJoined }: UseUrlJoinOptions) =>
           setTimeout(() => setJoinNotification(null), 4500);
         } else if (res.message) {
           sessionStorage.removeItem('pending_join_code');
+          setJoinError(res.message);
         }
       }
     };
@@ -42,5 +50,6 @@ export const useUrlJoin = ({ currentCoach, onTeamJoined }: UseUrlJoinOptions) =>
   return {
     joinNotification,
     setJoinNotification,
+    joinError,
   };
 };

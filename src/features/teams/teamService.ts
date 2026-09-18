@@ -5,6 +5,11 @@ import { db } from '../../firebase';
 import { doc, getDoc, setDoc, deleteDoc, query, collection, where, getDocs } from 'firebase/firestore';
 import { getCurrentCoach } from '../auth/authService';
 import { getPlayerById } from '../players/playerService';
+import {
+  generateTeamBaseSlug,
+  getCanonicalTeamSlug,
+  extractShortId,
+} from '../../utils/slugUtils';
 
 export function getTeamsForCoach(coachId: string): Team[] {
   if (!coachId) return [];
@@ -37,6 +42,49 @@ export function getTeamsForCoach(coachId: string): Team[] {
 
 export function getTeamById(teamId: string): Team | undefined {
   return loadData().teams.find((t) => t.id === teamId);
+}
+
+export function getTeamByIdOrSlug(identifier: string): Team | undefined {
+  if (!identifier) return undefined;
+  const data = loadData();
+  const teams = data.teams.filter((t) => !t.isDeleted && !t.deletedAt && !(data.deletedTeamIds && data.deletedTeamIds[t.id]));
+
+  // 1. Direct ID match
+  const directMatch = teams.find((t) => t.id === identifier);
+  if (directMatch) return directMatch;
+
+  const cleanIdentifier = identifier.toLowerCase().trim();
+
+  // 2. Canonical slug match
+  const canonicalMatch = teams.find(
+    (t) => getCanonicalTeamSlug(t, teams).toLowerCase() === cleanIdentifier
+  );
+  if (canonicalMatch) return canonicalMatch;
+
+  // 3. Base slug match
+  const baseMatches = teams.filter(
+    (t) => generateTeamBaseSlug(t).toLowerCase() === cleanIdentifier
+  );
+  if (baseMatches.length === 1) return baseMatches[0];
+  if (baseMatches.length > 1) {
+    // Return newest team
+    baseMatches.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return baseMatches[0];
+  }
+
+  // 4. Short ID match
+  const shortMatch = teams.find((t) => {
+    const short = extractShortId(t.id);
+    return Boolean(short && cleanIdentifier.endsWith(short.toLowerCase()));
+  });
+  if (shortMatch) return shortMatch;
+
+  return undefined;
+}
+
+export function getCanonicalTeamSlugForTeam(team: Team): string {
+  const teams = loadData().teams.filter((t) => !t.isDeleted && !t.deletedAt);
+  return getCanonicalTeamSlug(team, teams);
 }
 
 export function getTeamCoaches(teamId: string): Coach[] {

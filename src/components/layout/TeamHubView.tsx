@@ -1,14 +1,17 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Users, Calendar } from 'lucide-react';
 import { TeamSwitcher } from '../../features/teams/components/TeamSwitcher';
 import { TeamManagement } from '../../features/teams/components/TeamManagement';
 import { EventManagement } from '../../features/events/components/EventManagement';
 import { useTeam } from '../../features/teams/hooks/useTeam';
 import { useAuth } from '../../features/auth/hooks/useAuth';
+import { getCanonicalTeamSlugForTeam } from '../../storage';
 
 export const TeamHubView: React.FC = () => {
   const { currentCoach } = useAuth();
   const { selectedTeam, teamPlayers, teamEvents, activeTab, setActiveTab } = useTeam();
+  const navigate = useNavigate();
 
   if (!selectedTeam) {
     return (
@@ -29,6 +32,12 @@ export const TeamHubView: React.FC = () => {
     );
   }
 
+  const handleSwitchTab = (tab: 'roster' | 'events') => {
+    setActiveTab(tab);
+    const teamSlug = getCanonicalTeamSlugForTeam(selectedTeam);
+    navigate(`/teams/${teamSlug}/${tab}`);
+  };
+
   return (
     <div className="space-y-5">
       {/* View Switcher Tabs (Roster vs Events) */}
@@ -36,7 +45,7 @@ export const TeamHubView: React.FC = () => {
         <button
           type="button"
           id="tab-roster-btn"
-          onClick={() => setActiveTab('roster')}
+          onClick={() => handleSwitchTab('roster')}
           className={`px-4 py-2 text-xs font-bold rounded-lg transition flex items-center gap-2 cursor-pointer ${
             activeTab === 'roster'
               ? 'bg-slate-900 text-white shadow-xs'
@@ -50,7 +59,7 @@ export const TeamHubView: React.FC = () => {
         <button
           type="button"
           id="tab-events-btn"
-          onClick={() => setActiveTab('events')}
+          onClick={() => handleSwitchTab('events')}
           className={`px-4 py-2 text-xs font-bold rounded-lg transition flex items-center gap-2 cursor-pointer ${
             activeTab === 'events'
               ? 'bg-slate-900 text-white shadow-xs'

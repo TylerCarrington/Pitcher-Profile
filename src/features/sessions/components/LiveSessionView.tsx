@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   BaseballEvent,
   PitcherSession,
@@ -17,10 +18,14 @@ import {
   getEventsForTeam,
   getAllSessions,
   getPitchesForPlayer,
+  getCanonicalEventSlugForEvent,
+  getCanonicalTeamSlugForTeam,
 } from '../../../storage';
 import { calculateCumulativePitchTotals } from '../../../utils/pitchSmart';
 import { LivePitchHeader } from './LivePitchHeader';
 import { PitcherPicker } from './PitcherPicker';
+import { AppHeader } from '../../../components/layout/AppHeader';
+import { OfflineIndicator } from '../../../components/shared/OfflineIndicator';
 import { SessionNotes } from './SessionNotes';
 import { CoachesSharedNotes } from './CoachesSharedNotes';
 import { FastEntryGuideModal } from './FastEntryGuideModal';
@@ -73,6 +78,7 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
   const eventCtx = useEvent();
   const teamCtx = useTeam();
   const authCtx = useAuth();
+  const navigate = useNavigate();
 
   const event = props.event !== undefined ? props.event : eventCtx.selectedEvent;
   const activeSession = props.activeSession !== undefined ? props.activeSession : eventCtx.activeSession;
@@ -91,10 +97,20 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
   const onDeletePitch = props.onDeletePitch ?? eventCtx.deletePitch;
   const onUndoPitch = props.onUndoPitch ?? eventCtx.undoPitch;
   const onSaveNotes = props.onSaveNotes ?? eventCtx.saveNotes;
-  const onBackToTeam = props.onBackToTeam ?? (() => eventCtx.selectEvent(null));
   const onUpdateOuts = props.onUpdateOuts ?? eventCtx.updateOuts;
   const onEndInning = props.onEndInning ?? eventCtx.endInning;
   const team = props.team !== undefined ? props.team : teamCtx.selectedTeam;
+
+  const onBackToTeam = props.onBackToTeam ?? (() => {
+    eventCtx.selectEvent(null);
+    const targetTeam = team || (event?.teamId ? teamCtx.teams.find((t) => t.id === event.teamId) : null);
+    const teamSlug = targetTeam ? getCanonicalTeamSlugForTeam(targetTeam) : event?.teamId;
+    if (teamSlug) {
+      navigate(`/teams/${teamSlug}/events`);
+    } else {
+      navigate('/');
+    }
+  });
 
   const [pendingLocation, setPendingLocation] = useState<PitchLocation | null>(null);
   const [pendingStrike, setPendingStrike] = useState(false);
@@ -230,31 +246,34 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
   // Render PitcherPicker as its own standalone view/page when no active session or when requested via Exit View / End Session
   if (showPitcherPicker || !activeSession || !activePitcher) {
     return (
-      <div className="min-h-screen bg-slate-100/70 text-slate-900 py-6 px-4">
-        <PitcherPicker
-          event={event}
-          teamPlayers={teamPlayers}
-          allEventSessions={allEventSessions}
-          activePitcher={activePitcher}
-          activeSession={activeSession}
-          onStartSession={(pitcherId) => {
-            onStartSession(pitcherId);
-            setShowPitcherPicker(false);
-          }}
-          onEndSession={onEndSession}
-          onReopenSession={(sessionId) => {
-            onReopenSession(sessionId);
-            setShowPitcherPicker(false);
-          }}
-          onDeleteSession={onDeleteSession}
-          onBackToTeam={onBackToTeam}
-          onEndEvent={() => setShowEndEventConfirm(true)}
-          onClosePicker={() => {
-            if (activeSession && activePitcher) {
+      <div className="min-h-screen bg-slate-100/70 text-slate-900 flex flex-col">
+        <AppHeader onOpenAdmin={() => navigate('/admin')} />
+        <main className="max-w-5xl w-full mx-auto px-4 py-6 flex-1 space-y-6">
+          <PitcherPicker
+            event={event}
+            teamPlayers={teamPlayers}
+            allEventSessions={allEventSessions}
+            activePitcher={activePitcher}
+            activeSession={activeSession}
+            onStartSession={(pitcherId) => {
+              onStartSession(pitcherId);
               setShowPitcherPicker(false);
-            }
-          }}
-        />
+            }}
+            onEndSession={onEndSession}
+            onReopenSession={(sessionId) => {
+              onReopenSession(sessionId);
+              setShowPitcherPicker(false);
+            }}
+            onDeleteSession={onDeleteSession}
+            onBackToTeam={onBackToTeam}
+            onEndEvent={() => setShowEndEventConfirm(true)}
+            onClosePicker={() => {
+              if (activeSession && activePitcher) {
+                setShowPitcherPicker(false);
+              }
+            }}
+          />
+        </main>
 
         {/* Confirm End Event Modal */}
         <EndEventModal
@@ -266,9 +285,12 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
             }
             onEndEvent(event.id);
             setShowEndEventConfirm(false);
+            const slug = getCanonicalEventSlugForEvent(event);
+            navigate(`/events/${slug}/review`);
           }}
           onClose={() => setShowEndEventConfirm(false)}
         />
+        <OfflineIndicator />
       </div>
     );
   }
@@ -513,6 +535,8 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
           }
           onEndEvent(event.id);
           setShowEndEventConfirm(false);
+          const slug = getCanonicalEventSlugForEvent(event);
+          navigate(`/events/${slug}/review`);
         }}
         onClose={() => setShowEndEventConfirm(false)}
       />

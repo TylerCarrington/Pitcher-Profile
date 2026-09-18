@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BaseballEvent, Player, Pitch, Team, PitcherSession } from '../../../types';
-import { calculateGamePitchingMetrics } from '../../../storage';
+import { calculateGamePitchingMetrics, getCanonicalTeamSlugForTeam } from '../../../storage';
 import { Trash2, Trophy } from 'lucide-react';
 import { EventReviewHeader } from './EventReviewHeader';
 import { PitcherReviewCard } from './PitcherReviewCard';
@@ -25,17 +26,34 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = (props) => 
   const eventCtx = useEvent();
   const teamCtx = useTeam();
   const authCtx = useAuth();
+  const navigate = useNavigate();
 
   const event = props.event !== undefined ? props.event : eventCtx.selectedEvent;
   const team = props.team !== undefined ? props.team : teamCtx.selectedTeam;
   const players = props.players ?? teamCtx.teamPlayers;
   const allEventPitches = props.allEventPitches ?? eventCtx.allEventPitches;
   const allEventSessions = props.allEventSessions ?? eventCtx.allEventSessions;
-  const onBackToEvents = props.onBackToEvents ?? (() => eventCtx.selectEvent(null));
+  const onBackToEvents = props.onBackToEvents ?? (() => {
+    eventCtx.selectEvent(null);
+    const targetTeam = team || (event?.teamId ? teamCtx.teams.find((t) => t.id === event.teamId) : null);
+    const teamSlug = targetTeam ? getCanonicalTeamSlugForTeam(targetTeam) : event?.teamId;
+    if (teamSlug) {
+      navigate(`/teams/${teamSlug}/events`);
+    } else {
+      navigate('/');
+    }
+  });
   const onDeleteEvent = props.onDeleteEvent ?? (() => {
     if (event) {
       eventCtx.deleteEvent(event.id);
       eventCtx.selectEvent(null);
+      const targetTeam = team || (event?.teamId ? teamCtx.teams.find((t) => t.id === event.teamId) : null);
+      const teamSlug = targetTeam ? getCanonicalTeamSlugForTeam(targetTeam) : event?.teamId;
+      if (teamSlug) {
+        navigate(`/teams/${teamSlug}/events`);
+      } else {
+        navigate('/');
+      }
     }
   });
   const onSaveNotes = props.onSaveNotes ?? eventCtx.saveNotes;

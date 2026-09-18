@@ -145,7 +145,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = (props) => {
   };
 
   const copyShareLink = (team: Team) => {
-    const shareUrl = `${window.location.origin}${window.location.pathname}?join=${team.inviteCode}`;
+    const shareUrl = `${window.location.origin}/join/${team.inviteCode}`;
     navigator.clipboard.writeText(shareUrl).then(() => {
       setCopiedState({ id: team.id, type: 'link' });
       setTimeout(() => setCopiedState(null), 2500);

@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx scripts/verify-sync-matrix.ts && tsx scripts/verify-undo-pitch.ts"
+    "test": "tsx scripts/verify-sync-matrix.ts && tsx scripts/verify-undo-pitch.ts && tsx scripts/verify-url-routing.ts && tsx scripts/verify-clean-urls.ts && tsx scripts/verify-header-navigation.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -23,6 +23,7 @@
     "motion": "^12.23.24",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "react-router-dom": "^7.18.4",
     "vite": "^6.2.3"
   },
   "devDependencies": {

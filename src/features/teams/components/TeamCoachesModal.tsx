@@ -45,8 +45,8 @@ export const TeamCoachesModal: React.FC<TeamCoachesModalProps> = ({
 
   const isSelectedTeamCreator = selectedTeam.createdBy === currentCoach.id;
   const joinUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}${window.location.pathname}?join=${selectedTeam.inviteCode}`
-    : `?join=${selectedTeam.inviteCode}`;
+    ? `${window.location.origin}/join/${selectedTeam.inviteCode}`
+    : `/join/${selectedTeam.inviteCode}`;
 
   return (
     <>

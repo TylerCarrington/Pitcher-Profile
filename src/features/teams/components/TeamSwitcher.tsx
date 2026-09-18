@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Team, Coach, PitchRulePresetId } from '../../../types';
 import {
   ChevronDown,
@@ -15,6 +16,7 @@ import { PITCH_RULE_PRESETS } from '../../../utils/pitchSmart';
 import { ImageUploadInput } from '../../../components/shared/ImageUploadInput';
 import { useTeam } from '../hooks/useTeam';
 import { useAuth } from '../../auth/hooks/useAuth';
+import { getCanonicalTeamSlugForTeam } from '../../../storage';
 
 interface TeamSwitcherProps {
   teams?: Team[];
@@ -28,6 +30,7 @@ interface TeamSwitcherProps {
 export const TeamSwitcher: React.FC<TeamSwitcherProps> = (props) => {
   const teamCtx = useTeam();
   const authCtx = useAuth();
+  const navigate = useNavigate();
 
   const teams = props.teams ?? teamCtx.teams;
   const selectedTeam = props.selectedTeam !== undefined ? props.selectedTeam : teamCtx.selectedTeam;
@@ -184,6 +187,8 @@ export const TeamSwitcher: React.FC<TeamSwitcherProps> = (props) => {
                     id={`team-option-${team.id}`}
                     onClick={() => {
                       onSelectTeam(team);
+                      const slug = getCanonicalTeamSlugForTeam(team);
+                      navigate(`/teams/${slug}/roster`);
                       setIsOpen(false);
                     }}
                     className={`w-full px-3 py-2.5 text-left text-xs flex items-center justify-between gap-2.5 hover:bg-slate-50 transition cursor-pointer ${

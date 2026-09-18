@@ -34,7 +34,12 @@ export const AUTH_STATUS_KEY = 'pitch_tracker_auth_status_v2';
 export function extractCleanInviteCode(input: string): string {
   if (!input) return '';
   let cleaned = input.trim();
-  if (cleaned.includes('join=')) {
+  if (cleaned.includes('/join/')) {
+    const parts = cleaned.split('/join/');
+    if (parts[1]) {
+      cleaned = parts[1];
+    }
+  } else if (cleaned.includes('join=')) {
     try {
       const url = new URL(cleaned.startsWith('http') ? cleaned : `https://${cleaned}`);
       cleaned = url.searchParams.get('join') || cleaned;
@@ -44,7 +49,7 @@ export function extractCleanInviteCode(input: string): string {
     }
   }
   // Strip any trailing slashes, quotes, URL query parameters or hash fragments
-  cleaned = cleaned.replace(/[?#&].*$/, '').replace(/['"]/g, '').trim().toUpperCase();
+  cleaned = cleaned.replace(/[?#&/].*$/, '').replace(/['"]/g, '').trim().toUpperCase();
   return cleaned;
 }
 

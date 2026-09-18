@@ -1,6 +1,11 @@
 import { BaseballEvent } from '../../types';
 import { loadData, saveData } from '../../store/localStore';
 import { syncTeamByEventId, syncSingleTeamToCloud } from '../sync/syncService';
+import {
+  generateEventBaseSlug,
+  getCanonicalEventSlug,
+  extractShortId,
+} from '../../utils/slugUtils';
 
 export function getEventsForTeam(teamId: string): BaseballEvent[] {
   const data = loadData();
@@ -11,6 +16,48 @@ export function getEventsForTeam(teamId: string): BaseballEvent[] {
 
 export function getEventById(eventId: string): BaseballEvent | undefined {
   return loadData().events.find((e) => e.id === eventId);
+}
+
+export function getEventByIdOrSlug(identifier: string): BaseballEvent | undefined {
+  if (!identifier) return undefined;
+  const events = loadData().events.filter((e) => !e.isDeleted);
+
+  // 1. Direct ID match
+  const directMatch = events.find((e) => e.id === identifier);
+  if (directMatch) return directMatch;
+
+  const cleanIdentifier = identifier.toLowerCase().trim();
+
+  // 2. Canonical slug match (with disambiguation suffix if needed)
+  const canonicalMatch = events.find(
+    (e) => getCanonicalEventSlug(e, events).toLowerCase() === cleanIdentifier
+  );
+  if (canonicalMatch) return canonicalMatch;
+
+  // 3. Base slug match
+  const baseMatches = events.filter(
+    (e) => generateEventBaseSlug(e).toLowerCase() === cleanIdentifier
+  );
+  if (baseMatches.length === 1) return baseMatches[0];
+  if (baseMatches.length > 1) {
+    // Sort by scheduledAt descending to return the newest event
+    baseMatches.sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime());
+    return baseMatches[0];
+  }
+
+  // 4. Short ID match if identifier contains short hash (e.g. ends with -pfxo)
+  const shortMatch = events.find((e) => {
+    const short = extractShortId(e.id);
+    return Boolean(short && cleanIdentifier.endsWith(short.toLowerCase()));
+  });
+  if (shortMatch) return shortMatch;
+
+  return undefined;
+}
+
+export function getCanonicalEventSlugForEvent(event: BaseballEvent): string {
+  const events = loadData().events.filter((e) => !e.isDeleted);
+  return getCanonicalEventSlug(event, events);
 }
 
 export function createEvent(eventInput: {

@@ -15,7 +15,7 @@ export default defineConfig(() => {
       'import.meta.env.VITE_BUILD_DATE': JSON.stringify(buildDate),
       'import.meta.env.VITE_COMMIT_SHA': JSON.stringify(commitSha),
     },
-    base: './', // Use relative paths for assets to support GitHub Pages subpaths
+    base: '/', // Absolute base path for clean deep SPA routing
     plugins: [
       react(),
       tailwindcss(),

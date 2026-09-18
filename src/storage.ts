@@ -6,3 +6,4 @@ export * from './features/players/playerService';
 export * from './features/events/eventService';
 export * from './features/sessions/sessionService';
 export * from './features/pitches/pitchService';
+export * from './utils/slugUtils';

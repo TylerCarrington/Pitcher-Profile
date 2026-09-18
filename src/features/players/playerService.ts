@@ -27,6 +27,7 @@ export function savePlayer(playerInput: {
     : 12;
 
   let savedPlayer: Player;
+  const now = new Date().toISOString();
 
   if (playerInput.id) {
     const idx = data.players.findIndex((p) => p.id === playerInput.id);
@@ -39,6 +40,7 @@ export function savePlayer(playerInput: {
         imageUrl: playerInput.imageUrl?.trim() || undefined,
         throws: playerInput.throws || data.players[idx].throws,
         bats: playerInput.bats || data.players[idx].bats,
+        updatedAt: now,
       };
       savedPlayer = data.players[idx];
     } else {
@@ -51,7 +53,8 @@ export function savePlayer(playerInput: {
         imageUrl: playerInput.imageUrl?.trim() || undefined,
         throws: playerInput.throws || 'R',
         bats: playerInput.bats || 'R',
-        createdAt: new Date().toISOString(),
+        createdAt: now,
+        updatedAt: now,
       };
       data.players.push(savedPlayer);
     }
@@ -65,15 +68,21 @@ export function savePlayer(playerInput: {
       imageUrl: playerInput.imageUrl?.trim() || undefined,
       throws: playerInput.throws || 'R',
       bats: playerInput.bats || 'R',
-      createdAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
     };
     data.players.push(savedPlayer);
+  }
+
+  // Update parent team timestamp and trigger sync
+  const team = data.teams.find((t) => t.id === playerInput.teamId);
+  if (team) {
+    team.updatedAt = now;
   }
 
   saveData(data);
 
   // Instantly push updated team roster to Firestore so all co-coaches receive it immediately
-  const team = data.teams.find((t) => t.id === playerInput.teamId);
   if (team) {
     syncSingleTeamToCloud(team).catch((err) => console.warn('Instant team player sync notice:', err));
   }

@@ -1,7 +1,6 @@
 import { Coach } from '../../types';
 import { loadData, saveData, AUTH_STATUS_KEY, CURRENT_COACH_KEY, notify } from '../../store/localStore';
-import { activeCloudUnsubscribe, currentCloudDocId } from '../sync/syncService'; // Note: initCloudSync might need to be imported from syncService later
-import { initCloudSync as initSync } from '../sync/syncService';
+import { initCloudSync as initSync, stopCloudSync, syncCoachProfileToCloud } from '../sync/syncService';
 
 export function getIsSignedIn(): boolean {
   const status = localStorage.getItem(AUTH_STATUS_KEY);
@@ -51,6 +50,7 @@ export function signInWithGoogle(profile: {
   localStorage.setItem(AUTH_STATUS_KEY, 'signed_in');
   saveData(data);
   initSync(coach.email, coach.id);
+  syncCoachProfileToCloud(coach).catch(() => {});
   notify();
   return coach;
 }
@@ -59,6 +59,7 @@ export const createCoachAccount = signInWithGoogle;
 
 export function signOutCoach(): void {
   localStorage.setItem(AUTH_STATUS_KEY, 'signed_out');
+  stopCloudSync();
   notify();
 }
 

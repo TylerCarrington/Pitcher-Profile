@@ -1,4 +1,4 @@
-import { doc, setDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, query, where, getDocs, onSnapshot, Unsubscribe } from 'firebase/firestore';
 export let activeCloudUnsubscribe: Unsubscribe | null = null;
 export let currentCloudDocId: string | null = null;
 import { db } from '../../firebase';
@@ -8,10 +8,8 @@ import { AppData, loadData, saveData, cleanForFirestore, extractCleanInviteCode,
 import { Team, Player, Coach, BaseballEvent, PitcherSession, Pitch } from '../../types';
 import { getCurrentCoach } from '../auth/authService';
 
-
-let isPushingToCloud = false;
 let isInitialSyncComplete = false;
-let cloudSaveTimer: any = null;
+let coachProfileTimer: any = null;
 
 export function getCoachDocId(coach?: Coach | null): string | null {
   const current = coach || getCurrentCoach();
@@ -26,6 +24,12 @@ export function getCoachDocId(coach?: Coach | null): string | null {
 export async function syncSingleTeamToCloud(team: Team, dataOverride?: AppData): Promise<void> {
   if (!team || !team.id) return;
   const data = dataOverride || loadData();
+  if (data.deletedTeamIds && data.deletedTeamIds[team.id]) {
+    return;
+  }
+  if (team.isDeleted || team.deletedAt) {
+    return;
+  }
   const teamPlayers = data.players.filter((p) => p.teamId === team.id);
   const playerIds = new Set(teamPlayers.map((p) => p.id));
   const teamEvents = data.events.filter((e) => e.teamId === team.id);
@@ -50,6 +54,7 @@ export async function syncSingleTeamToCloud(team: Team, dataOverride?: AppData):
     creatorEmail: creator?.email || null,
     creatorName: creator?.name || null,
     createdAt: team.createdAt,
+    updatedAt: team.updatedAt || new Date().toISOString(),
     memberCoachIds: team.memberCoachIds || [],
     inviteCode: team.inviteCode,
     inviteCodeCreatedAt: team.inviteCodeCreatedAt,
@@ -61,9 +66,44 @@ export async function syncSingleTeamToCloud(team: Team, dataOverride?: AppData):
     lastUpdated: new Date().toISOString(),
   };
 
-  const sanitizedPayload = cleanForFirestore(payload);
-
   try {
+    // Read remote doc if it exists to preserve concurrent pitches/sessions from other coaches
+    try {
+      const existingDoc = await getDoc(doc(db, 'teams', team.id));
+      if (existingDoc.exists()) {
+        const remoteData = existingDoc.data() as any;
+        if (Array.isArray(remoteData?.pitches) && remoteData.pitches.length > 0) {
+          const pitchMap = new Map<string, Pitch>();
+          remoteData.pitches.forEach((rp: Pitch) => {
+            if (rp && rp.id) pitchMap.set(rp.id, rp);
+          });
+          teamPitches.forEach((lp: Pitch) => {
+            if (lp && lp.id) {
+              const existing = pitchMap.get(lp.id);
+              pitchMap.set(lp.id, mergeWithLWW(existing, lp));
+            }
+          });
+          payload.pitches = Array.from(pitchMap.values());
+        }
+        if (Array.isArray(remoteData?.sessions) && remoteData.sessions.length > 0) {
+          const sessionMap = new Map<string, PitcherSession>();
+          remoteData.sessions.forEach((rs: PitcherSession) => {
+            if (rs && rs.id) sessionMap.set(rs.id, rs);
+          });
+          teamSessions.forEach((ls: PitcherSession) => {
+            if (ls && ls.id) {
+              const existing = sessionMap.get(ls.id);
+              sessionMap.set(ls.id, mergeWithLWW(existing, ls));
+            }
+          });
+          payload.sessions = Array.from(sessionMap.values());
+        }
+      }
+    } catch (readErr) {
+      console.warn('Notice reading remote team doc for additive merge:', readErr);
+    }
+
+    const sanitizedPayload = cleanForFirestore(payload);
     await setDoc(doc(db, 'teams', team.id), sanitizedPayload, { merge: true });
     if (cleanCode) {
       await setDoc(doc(db, 'invite_codes', cleanCode), sanitizedPayload, { merge: true });
@@ -99,46 +139,123 @@ export function syncTeamBySessionId(sessionId: string, data?: AppData): Promise<
   return Promise.resolve();
 }
 
-async function pushToFirestoreDebounced(data: AppData) {
-  if (!isInitialSyncComplete) {
-    // Skip saving back to Firestore during the initial sync loading phase
-    return;
+export async function syncCoachProfileToCloud(
+  coach?: Coach | null,
+  teamIdsOverride?: string[],
+): Promise<void> {
+  const current = coach || getCurrentCoach();
+  if (!current) return;
+  const docId = getCoachDocId(current);
+  if (!docId) return;
+
+  const data = loadData();
+  const coachEmail = current.email?.trim().toLowerCase();
+  const joinedTeamIds =
+    teamIdsOverride ||
+    data.teams
+      .filter((t) => {
+        if (t.isDeleted || t.deletedAt) return false;
+        if (data.deletedTeamIds && data.deletedTeamIds[t.id]) return false;
+        if (t.createdBy === current.id) return true;
+        if (t.memberCoachIds && t.memberCoachIds.includes(current.id)) return true;
+        if (coachEmail) {
+          const creator = data.coaches.find((c) => c.id === t.createdBy);
+          if (creator?.email?.toLowerCase() === coachEmail) return true;
+        }
+        return false;
+      })
+      .map((t) => t.id);
+
+  const payload = {
+    id: current.id,
+    name: current.name,
+    email: current.email || null,
+    avatar: current.avatar || null,
+    role: current.role || 'head_coach',
+    joinedTeamIds,
+    lastActiveAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  try {
+    await setDoc(doc(db, 'coaches', docId), cleanForFirestore(payload), { merge: true });
+  } catch (err) {
+    console.warn('Notice syncing coach profile to Firestore:', err);
+  }
+}
+
+export function syncCoachProfileDebounced() {
+  if (coachProfileTimer) {
+    clearTimeout(coachProfileTimer);
+  }
+  coachProfileTimer = setTimeout(() => {
+    syncCoachProfileToCloud().catch(() => {});
+  }, 800);
+}
+
+// Helper to resolve entity timestamp
+function getEntityTimestamp(item: any): number {
+  if (!item) return 0;
+  const ts = item.updatedAt || item.timestamp || item.createdAt || item.startedAt || item.scheduledAt;
+  if (!ts) return 0;
+  const parsed = new Date(ts).getTime();
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+// Last-Write-Wins (LWW) entity reconciliation
+export function mergeWithLWW<T extends { id: string }>(
+  localItem: T | undefined,
+  remoteItem: T,
+): T {
+  if (!localItem) return remoteItem;
+  if (!remoteItem) return localItem;
+
+  const localTime = getEntityTimestamp(localItem);
+  const remoteTime = getEntityTimestamp(remoteItem);
+
+  // If local is strictly newer than remote, local state wins
+  if (localTime > remoteTime) {
+    return { ...remoteItem, ...localItem };
   }
 
-  if (cloudSaveTimer) {
-    clearTimeout(cloudSaveTimer);
-  }
-
-  cloudSaveTimer = setTimeout(async () => {
-    const docId = currentCloudDocId || getCoachDocId();
-    if (!docId) return;
-
-    try {
-      notifySyncStatus('syncing');
-      isPushingToCloud = true;
-      const coachDocRef = doc(db, 'coaches', docId, 'state', 'current');
-      const sanitizedCoachState = cleanForFirestore({
-        ...data,
-        lastUpdated: new Date().toISOString(),
-        updatedBy: docId,
-      });
-      await setDoc(coachDocRef, sanitizedCoachState, { merge: true });
-
-      notifySyncStatus('synced');
-    } catch (err) {
-      console.warn('Firestore cloud sync notice (will retry or operate offline):', err);
-      notifySyncStatus('offline');
-    } finally {
-      isPushingToCloud = false;
-    }
-  }, 400);
+  // Otherwise remote wins
+  return { ...localItem, ...remoteItem };
 }
 
 // Merge remote cloud state with local state
-function mergeAppData(local: AppData, remote: any): AppData {
+export function mergeAppData(local: AppData, remote: any): AppData {
   if (!remote || typeof remote !== 'object') return local;
 
-  const mergeById = <T extends { id: string }>(localArr: T[] = [], remoteArr: any[] = []): T[] => {
+  // Merge deletedTeamIds maps with timestamp comparison
+  const mergedDeletedTeamIds: Record<string, string> = { ...(local.deletedTeamIds || {}) };
+  if (remote.deletedTeamIds && typeof remote.deletedTeamIds === 'object') {
+    Object.entries(remote.deletedTeamIds).forEach(([teamId, deletedAt]) => {
+      if (typeof deletedAt === 'string') {
+        const existing = mergedDeletedTeamIds[teamId];
+        if (!existing || new Date(deletedAt).getTime() > new Date(existing).getTime()) {
+          mergedDeletedTeamIds[teamId] = deletedAt;
+        }
+      }
+    });
+  }
+
+  // Also collect any teams explicitly marked isDeleted or deletedAt in remote.teams
+  if (Array.isArray(remote.teams)) {
+    remote.teams.forEach((rt: any) => {
+      if (rt && rt.id && (rt.isDeleted || rt.deletedAt)) {
+        const dAt = rt.deletedAt || rt.updatedAt || new Date().toISOString();
+        const existing = mergedDeletedTeamIds[rt.id];
+        if (!existing || new Date(dAt).getTime() > new Date(existing).getTime()) {
+          mergedDeletedTeamIds[rt.id] = dAt;
+        }
+      }
+    });
+  }
+
+  const mergeById = <T extends { id: string; deletedAt?: string; isDeleted?: boolean }>(
+    localArr: T[] = [],
+    remoteArr: any[] = [],
+  ): T[] => {
     if (!Array.isArray(remoteArr)) return localArr;
     const map = new Map<string, T>();
     localArr.forEach((item) => {
@@ -146,11 +263,11 @@ function mergeAppData(local: AppData, remote: any): AppData {
     });
     remoteArr.forEach((item) => {
       if (item && item.id) {
-        // remote replaces or creates
-        map.set(item.id, { ...(map.get(item.id) || {}), ...item });
+        const localItem = map.get(item.id);
+        map.set(item.id, mergeWithLWW(localItem, item));
       }
     });
-    return Array.from(map.values());
+    return Array.from(map.values()).filter((item) => !item.isDeleted && !item.deletedAt);
   };
 
   const mergeCoaches = (localCoaches: Coach[] = [], remoteCoaches: any[] = []): Coach[] => {
@@ -168,13 +285,59 @@ function mergeAppData(local: AppData, remote: any): AppData {
     return Array.from(map.values());
   };
 
+  const mergedTeams = mergeById<Team>(local.teams, remote.teams).filter((t) => {
+    if (t.isDeleted || t.deletedAt) return false;
+    if (mergedDeletedTeamIds[t.id]) {
+      const deletedTime = new Date(mergedDeletedTeamIds[t.id]).getTime();
+      const entityTime = getEntityTimestamp(t);
+      if (entityTime <= deletedTime) return false;
+    }
+    return true;
+  });
+
+  const mergedPlayers = mergeById<Player>(local.players, remote.players).filter((p) => {
+    if (p.isDeleted || p.deletedAt) return false;
+    if (mergedDeletedTeamIds[p.teamId]) return false;
+    return true;
+  });
+
+  const mergedEvents = mergeById<BaseballEvent>(local.events, remote.events).filter((e) => {
+    if (e.isDeleted || e.deletedAt) return false;
+    if (mergedDeletedTeamIds[e.teamId]) return false;
+    return true;
+  });
+
+  // Collect all event IDs that belong to deleted teams
+  const deletedEventIds = new Set<string>();
+  local.events.forEach((e) => {
+    if (e && e.teamId && mergedDeletedTeamIds[e.teamId]) deletedEventIds.add(e.id);
+  });
+  if (Array.isArray(remote.events)) {
+    remote.events.forEach((e: any) => {
+      if (e && e.teamId && mergedDeletedTeamIds[e.teamId]) deletedEventIds.add(e.id);
+    });
+  }
+
+  const mergedSessions = mergeById<PitcherSession>(local.sessions, remote.sessions).filter((s) => {
+    if (s.isDeleted || s.deletedAt) return false;
+    if (deletedEventIds.has(s.eventId)) return false;
+    return true;
+  });
+
+  const mergedPitches = mergeById<Pitch>(local.pitches, remote.pitches).filter((pi) => {
+    if ((pi as any).isDeleted || (pi as any).deletedAt) return false;
+    if (deletedEventIds.has(pi.eventId)) return false;
+    return true;
+  });
+
   return {
     coaches: mergeCoaches(local.coaches, remote.coaches),
-    teams: mergeById<Team>(local.teams, remote.teams),
-    players: mergeById<Player>(local.players, remote.players),
-    events: mergeById<BaseballEvent>(local.events, remote.events),
-    sessions: mergeById<PitcherSession>(local.sessions, remote.sessions),
-    pitches: mergeById<Pitch>(local.pitches, remote.pitches),
+    teams: mergedTeams,
+    players: mergedPlayers,
+    events: mergedEvents,
+    sessions: mergedSessions,
+    pitches: mergedPitches,
+    deletedTeamIds: mergedDeletedTeamIds,
   };
 }
 
@@ -207,6 +370,12 @@ export function syncTeamListeners(teams: Team[]): void {
 
           if (!snapshot.exists()) {
             const localData = loadData();
+            const now = new Date().toISOString();
+            localData.deletedTeamIds = {
+              ...(localData.deletedTeamIds || {}),
+              [team.id]: now,
+            };
+
             const teamEvents = localData.events.filter((e) => e.teamId === team.id);
             const eventIds = new Set(teamEvents.map((e) => e.id));
 
@@ -227,17 +396,54 @@ export function syncTeamListeners(teams: Team[]): void {
           }
 
           const remoteTeam = snapshot.data() as any;
+          if (remoteTeam && (remoteTeam.isDeleted === true || remoteTeam.deletedAt)) {
+            const localData = loadData();
+            const delTs = remoteTeam.deletedAt || remoteTeam.updatedAt || new Date().toISOString();
+            localData.deletedTeamIds = {
+              ...(localData.deletedTeamIds || {}),
+              [team.id]: delTs,
+            };
+
+            const teamEvents = localData.events.filter((e) => e.teamId === team.id);
+            const eventIds = new Set(teamEvents.map((e) => e.id));
+
+            localData.teams = localData.teams.filter((t) => t.id !== team.id);
+            localData.players = localData.players.filter((p) => p.teamId !== team.id);
+            localData.events = localData.events.filter((e) => e.teamId !== team.id);
+            localData.sessions = localData.sessions.filter((s) => !eventIds.has(s.eventId));
+            localData.pitches = localData.pitches.filter((p) => !eventIds.has(p.eventId));
+
+            saveData(localData, true);
+
+            if (activeTeamUnsubscribes.has(team.id)) {
+              const unsubFn = activeTeamUnsubscribes.get(team.id);
+              if (unsubFn) unsubFn();
+              activeTeamUnsubscribes.delete(team.id);
+            }
+            return;
+          }
+
           if (remoteTeam && remoteTeam.id) {
             const localData = loadData();
 
+            // Check if locally marked as deleted and remote is not strictly newer
+            if (localData.deletedTeamIds && localData.deletedTeamIds[remoteTeam.id]) {
+              const delTs = new Date(localData.deletedTeamIds[remoteTeam.id]).getTime();
+              const remoteTs = getEntityTimestamp(remoteTeam);
+              if (remoteTs <= delTs) {
+                return;
+              }
+            }
+
               // Merge team
               const tIdx = localData.teams.findIndex((t) => t.id === remoteTeam.id);
-              const mergedTeam: Team = {
+              const remoteTeamRecord: Team = {
                 id: remoteTeam.id,
                 name: remoteTeam.name || team.name,
                 imageUrl: remoteTeam.imageUrl || undefined,
                 createdBy: remoteTeam.createdBy || team.createdBy,
                 createdAt: remoteTeam.createdAt || team.createdAt,
+                updatedAt: remoteTeam.updatedAt || remoteTeam.lastUpdated,
                 memberCoachIds: Array.isArray(remoteTeam.memberCoachIds)
                   ? remoteTeam.memberCoachIds
                   : team.memberCoachIds,
@@ -246,70 +452,73 @@ export function syncTeamListeners(teams: Team[]): void {
                 pitchRulePresetId:
                   remoteTeam.pitchRulePresetId || team.pitchRulePresetId || 'usa_pitch_smart',
               };
+              const mergedTeam = mergeWithLWW(localData.teams[tIdx], remoteTeamRecord);
               if (tIdx >= 0) {
                 localData.teams[tIdx] = mergedTeam;
               } else {
                 localData.teams.push(mergedTeam);
               }
 
-              // Merge players: replace team's roster with authoritative remote list
+              // Merge players: merge roster with LWW
               if (Array.isArray(remoteTeam.players)) {
+                const teamPlayerMap = new Map<string, Player>();
+                localData.players
+                  .filter((p) => p.teamId === remoteTeam.id)
+                  .forEach((p) => teamPlayerMap.set(p.id, p));
+                remoteTeam.players
+                  .filter((p: any) => Boolean(p && p.id))
+                  .forEach((rp: Player) => {
+                    const existing = teamPlayerMap.get(rp.id);
+                    teamPlayerMap.set(rp.id, mergeWithLWW(existing, rp));
+                  });
                 const otherPlayers = localData.players.filter((p) => p.teamId !== remoteTeam.id);
-                const validRemotePlayers = remoteTeam.players.filter((p: Player) => Boolean(p && p.id));
-                localData.players = [...otherPlayers, ...validRemotePlayers];
+                localData.players = [...otherPlayers, ...Array.from(teamPlayerMap.values())];
               }
 
-              // Merge events: replace team's events with authoritative remote list
+              // Merge events: merge events with LWW
               if (Array.isArray(remoteTeam.events)) {
+                const teamEventMap = new Map<string, BaseballEvent>();
+                localData.events
+                  .filter((e) => e.teamId === remoteTeam.id)
+                  .forEach((e) => teamEventMap.set(e.id, e));
+                remoteTeam.events
+                  .filter((e: any) => Boolean(e && e.id))
+                  .forEach((re: BaseballEvent) => {
+                    const existing = teamEventMap.get(re.id);
+                    teamEventMap.set(re.id, mergeWithLWW(existing, re));
+                  });
                 const otherEvents = localData.events.filter((e) => e.teamId !== remoteTeam.id);
-                const validRemoteEvents = remoteTeam.events.filter((e: BaseballEvent) => Boolean(e && e.id));
-                localData.events = [...otherEvents, ...validRemoteEvents];
+                localData.events = [...otherEvents, ...Array.from(teamEventMap.values())];
               }
 
-              // Merge sessions for events/players/sessions of this team
+              // Merge sessions: merge sessions with LWW
               if (Array.isArray(remoteTeam.sessions)) {
-                const teamEventIds = new Set<string>();
-                (remoteTeam.events || []).forEach((e: BaseballEvent) => { if (e?.id) teamEventIds.add(e.id); });
-                (remoteTeam.sessions || []).forEach((s: PitcherSession) => { if (s?.eventId) teamEventIds.add(s.eventId); });
-
-                const teamPlayerIds = new Set<string>();
-                (remoteTeam.players || []).forEach((p: Player) => { if (p?.id) teamPlayerIds.add(p.id); });
-                (remoteTeam.sessions || []).forEach((s: PitcherSession) => { if (s?.pitcherId) teamPlayerIds.add(s.pitcherId); });
-
-                const teamSessionIds = new Set<string>();
-                (remoteTeam.sessions || []).forEach((s: PitcherSession) => { if (s?.id) teamSessionIds.add(s.id); });
-
-                const otherSessions = localData.sessions.filter(
-                  (s) => !teamEventIds.has(s.eventId) && !teamPlayerIds.has(s.pitcherId) && !teamSessionIds.has(s.id),
-                );
-                const validRemoteSessions = remoteTeam.sessions.filter((s: PitcherSession) => Boolean(s && s.id));
-                localData.sessions = [...otherSessions, ...validRemoteSessions];
+                const sessionMap = new Map<string, PitcherSession>();
+                localData.sessions.forEach((s) => {
+                  if (s && s.id) sessionMap.set(s.id, s);
+                });
+                remoteTeam.sessions
+                  .filter((s: any) => Boolean(s && s.id))
+                  .forEach((rs: PitcherSession) => {
+                    const existing = sessionMap.get(rs.id);
+                    sessionMap.set(rs.id, mergeWithLWW(existing, rs));
+                  });
+                localData.sessions = Array.from(sessionMap.values());
               }
 
-              // Merge pitches for events/players/sessions of this team
+              // Merge pitches: merge pitches with LWW
               if (Array.isArray(remoteTeam.pitches)) {
-                const teamEventIds = new Set<string>();
-                (remoteTeam.events || []).forEach((e: BaseballEvent) => { if (e?.id) teamEventIds.add(e.id); });
-                (remoteTeam.sessions || []).forEach((s: PitcherSession) => { if (s?.eventId) teamEventIds.add(s.eventId); });
-                (remoteTeam.pitches || []).forEach((pi: Pitch) => { if (pi?.eventId) teamEventIds.add(pi.eventId); });
-
-                const teamPlayerIds = new Set<string>();
-                (remoteTeam.players || []).forEach((p: Player) => { if (p?.id) teamPlayerIds.add(p.id); });
-                (remoteTeam.sessions || []).forEach((s: PitcherSession) => { if (s?.pitcherId) teamPlayerIds.add(s.pitcherId); });
-                (remoteTeam.pitches || []).forEach((pi: Pitch) => { if (pi?.pitcherId) teamPlayerIds.add(pi.pitcherId); });
-
-                const teamSessionIds = new Set<string>();
-                (remoteTeam.sessions || []).forEach((s: PitcherSession) => { if (s?.id) teamSessionIds.add(s.id); });
-                (remoteTeam.pitches || []).forEach((pi: Pitch) => { if (pi?.sessionId) teamSessionIds.add(pi.sessionId); });
-
-                const otherPitches = localData.pitches.filter(
-                  (pi) =>
-                    !teamEventIds.has(pi.eventId) &&
-                    !teamPlayerIds.has(pi.pitcherId) &&
-                    !teamSessionIds.has(pi.sessionId),
-                );
-                const validRemotePitches = remoteTeam.pitches.filter((pi: Pitch) => Boolean(pi && pi.id));
-                localData.pitches = [...otherPitches, ...validRemotePitches];
+                const pitchMap = new Map<string, Pitch>();
+                localData.pitches.forEach((pi) => {
+                  if (pi && pi.id) pitchMap.set(pi.id, pi);
+                });
+                remoteTeam.pitches
+                  .filter((pi: any) => Boolean(pi && pi.id))
+                  .forEach((rpi: Pitch) => {
+                    const existing = pitchMap.get(rpi.id);
+                    pitchMap.set(rpi.id, mergeWithLWW(existing, rpi));
+                  });
+                localData.pitches = Array.from(pitchMap.values());
               }
 
               saveData(localData, true); // save locally and trigger UI notify without echoing
@@ -355,19 +564,73 @@ async function fetchAndMergeCoachTeams(coachId: string, email?: string, coachUid
       queryPromises.push(getDocs(q3));
     }
 
-    const results = await Promise.all(queryPromises);
-    results.forEach((snapshot) => {
-      snapshot.forEach((doc: any) => {
-        if (!teamIds.has(doc.id)) {
-          teamIds.add(doc.id);
-          dbTeams.push(doc.data());
+    // Also check coach metadata doc coaches/{coachId} for joinedTeamIds
+    try {
+      const coachDocSnap = await getDoc(doc(db, 'coaches', coachId));
+      if (coachDocSnap.exists()) {
+        const coachProfile = coachDocSnap.data() as any;
+        if (Array.isArray(coachProfile?.joinedTeamIds)) {
+          coachProfile.joinedTeamIds.forEach((tid: string) => {
+            if (tid && !teamIds.has(tid)) {
+              queryPromises.push(getDoc(doc(db, 'teams', tid)));
+            }
+          });
         }
-      });
+      }
+    } catch (profErr) {
+      console.warn('Notice checking coach profile doc:', profErr);
+    }
+
+    const results = await Promise.all(queryPromises);
+    results.forEach((res) => {
+      if (res && res.docs) {
+        // QuerySnapshot
+        res.forEach((d: any) => {
+          if (!teamIds.has(d.id)) {
+            teamIds.add(d.id);
+            dbTeams.push(d.data());
+          }
+        });
+      } else if (res && typeof res.exists === 'function' && res.exists()) {
+        // DocumentSnapshot
+        if (!teamIds.has(res.id)) {
+          teamIds.add(res.id);
+          dbTeams.push(res.data());
+        }
+      }
     });
 
+    const localData = loadData();
+
+    // Backward-compatible legacy migration:
+    // If no teams found in Firestore teams collection and localStore is empty,
+    // check if legacy coaches/{coachId}/state/current exists.
+    if (dbTeams.length === 0 && localData.teams.length === 0) {
+      try {
+        const legacySnap = await getDoc(doc(db, 'coaches', coachId, 'state', 'current'));
+        if (legacySnap.exists()) {
+          const legacyData = legacySnap.data() as any;
+          if (legacyData && Array.isArray(legacyData.teams) && legacyData.teams.length > 0) {
+            console.log('Migrating legacy coach state to team-first Firestore schema...');
+            const merged = mergeAppData(localData, legacyData);
+            saveData(merged, true);
+            // Migrate each team into teams/{teamId}
+            for (const team of merged.teams) {
+              if (!team.isDeleted && !team.deletedAt) {
+                await syncSingleTeamToCloud(team, merged);
+              }
+            }
+            syncTeamListeners(merged.teams);
+            syncCoachProfileToCloud().catch(() => {});
+            return;
+          }
+        }
+      } catch (migErr) {
+        console.warn('Notice checking legacy coach state:', migErr);
+      }
+    }
+
     if (dbTeams.length > 0) {
-      const localData = loadData();
-      
       const remoteTeamsList: Team[] = [];
       const remotePlayersList: Player[] = [];
       const remoteEventsList: BaseballEvent[] = [];
@@ -376,6 +639,23 @@ async function fetchAndMergeCoachTeams(coachId: string, email?: string, coachUid
 
       dbTeams.forEach((teamData) => {
         if (!teamData || !teamData.id) return;
+
+        if (teamData.isDeleted === true || teamData.deletedAt) {
+          const delTs = teamData.deletedAt || teamData.updatedAt || new Date().toISOString();
+          localData.deletedTeamIds = {
+            ...(localData.deletedTeamIds || {}),
+            [teamData.id]: delTs,
+          };
+          return;
+        }
+
+        if (localData.deletedTeamIds && localData.deletedTeamIds[teamData.id]) {
+          const delTs = new Date(localData.deletedTeamIds[teamData.id]).getTime();
+          const entityTs = getEntityTimestamp(teamData);
+          if (entityTs <= delTs) {
+            return;
+          }
+        }
         
         const teamRecord: Team = {
           id: teamData.id,
@@ -383,6 +663,7 @@ async function fetchAndMergeCoachTeams(coachId: string, email?: string, coachUid
           imageUrl: teamData.imageUrl || undefined,
           createdBy: teamData.createdBy || 'coach_creator',
           createdAt: teamData.createdAt || new Date().toISOString(),
+          updatedAt: teamData.updatedAt || teamData.lastUpdated,
           memberCoachIds: Array.isArray(teamData.memberCoachIds) ? teamData.memberCoachIds : [],
           inviteCode: teamData.inviteCode || undefined,
           inviteCodeCreatedAt: teamData.inviteCodeCreatedAt || undefined,
@@ -414,8 +695,9 @@ async function fetchAndMergeCoachTeams(coachId: string, email?: string, coachUid
       };
 
       const merged = mergeAppData(localData, remoteDataObj);
-      saveData(merged, false); // Consolidate and repair the coach state doc
+      saveData(merged, true); // Save locally without echoing back to cloud
       syncTeamListeners(merged.teams);
+      syncCoachProfileToCloud().catch(() => {});
     }
   } catch (err) {
     console.warn('Direct teams recovery check failed:', err);
@@ -442,95 +724,75 @@ export function initCloudSync(coachEmail?: string, coachUid?: string): () => voi
   isInitialSyncComplete = false;
   notifySyncStatus('syncing');
 
-  // Trigger parallel background recovery search of direct teams
-  fetchAndMergeCoachTeams(docId, coachEmail, coachUid).catch(() => {});
-
   // Immediately initialize listeners for any locally known teams
   const initialData = loadData();
   if (initialData.teams.length > 0) {
     syncTeamListeners(initialData.teams);
   }
 
-  const coachDocRef = doc(db, 'coaches', docId, 'state', 'current');
+  // Fetch coach teams from authoritative Firestore teams collection (Single Source of Truth)
+  fetchAndMergeCoachTeams(docId, coachEmail, coachUid)
+    .catch((err) => console.warn('Notice fetching coach teams:', err))
+    .finally(() => {
+      isInitialSyncComplete = true;
+      notifySyncStatus('synced');
+    });
+
+  // Listen to coach profile document coaches/{docId} (metadata & joinedTeamIds only)
+  const coachDocRef = doc(db, 'coaches', docId);
 
   try {
     activeCloudUnsubscribe = onSnapshot(
       coachDocRef,
-      (snapshot) => {
-        isInitialSyncComplete = true;
+      async (snapshot) => {
+        if (snapshot.metadata.hasPendingWrites) {
+          return;
+        }
         if (snapshot.exists()) {
-          const remoteData = snapshot.data();
-          if (!isPushingToCloud) {
-            const localData = loadData();
-            const merged = mergeAppData(localData, remoteData);
-
-            // Reconcile current coach and team memberships across devices
-            const current = getCurrentCoach();
-            if (current && current.email) {
-              const cleanEmail = current.email.trim().toLowerCase();
-              const authoritativeCoach = merged.coaches.find(
-                (c) => c.email && c.email.trim().toLowerCase() === cleanEmail,
-              );
-              if (authoritativeCoach && authoritativeCoach.id !== current.id) {
-                localStorage.setItem(CURRENT_COACH_KEY, authoritativeCoach.id);
-              }
-
-              // Ensure all teams created by or belonging to this email include this coach ID
-              merged.teams.forEach((team) => {
-                const creator = merged.coaches.find((c) => c.id === team.createdBy);
-                if (
-                  creator?.email?.toLowerCase() === cleanEmail ||
-                  team.createdBy === current.id ||
-                  (authoritativeCoach && team.createdBy === authoritativeCoach.id)
-                ) {
-                  if (!team.memberCoachIds.includes(current.id)) {
-                    team.memberCoachIds.push(current.id);
-                  }
-                  if (authoritativeCoach && !team.memberCoachIds.includes(authoritativeCoach.id)) {
-                    team.memberCoachIds.push(authoritativeCoach.id);
-                  }
-                }
-              });
+          const profile = snapshot.data() as any;
+          if (profile && Array.isArray(profile.joinedTeamIds)) {
+            const currentData = loadData();
+            const currentTeamIds = new Set(currentData.teams.map((t) => t.id));
+            const hasNewTeams = profile.joinedTeamIds.some(
+              (tid: string) => !currentTeamIds.has(tid) && !currentData.deletedTeamIds?.[tid],
+            );
+            if (hasNewTeams) {
+              await fetchAndMergeCoachTeams(docId, coachEmail, coachUid);
             }
-
-            saveData(merged, true); // Save locally without echoing back to cloud
-            // Maintain team listeners for all teams
-            syncTeamListeners(merged.teams);
-            notifySyncStatus('synced');
           }
         } else {
-          // If no cloud doc exists yet, upload current local state to start
-          const localData = loadData();
-          if (localData.teams.length > 0 || localData.players.length > 0) {
-            pushToFirestoreDebounced(localData);
-          } else {
-            notifySyncStatus('synced');
-          }
+          // Initialize coach profile doc in Firestore if not yet present
+          syncCoachProfileToCloud().catch(() => {});
         }
       },
       (error) => {
-        console.warn('Firestore snapshot listener offline or permissions pending:', error);
+        console.warn('Coach profile snapshot listener offline or permissions pending:', error);
         notifySyncStatus('offline');
         isInitialSyncComplete = true;
       },
     );
   } catch (e) {
-    console.warn('Failed to attach Firestore sync listener:', e);
+    console.warn('Failed to attach coach profile listener:', e);
     notifySyncStatus('offline');
   }
 
   return () => {
-    if (activeCloudUnsubscribe) {
-      activeCloudUnsubscribe();
-      activeCloudUnsubscribe = null;
-    }
-    for (const unsub of activeTeamUnsubscribes.values()) {
-      unsub();
-    }
-    activeTeamUnsubscribes.clear();
+    stopCloudSync();
   };
 }
 
+export function stopCloudSync(): void {
+  if (activeCloudUnsubscribe) {
+    activeCloudUnsubscribe();
+    activeCloudUnsubscribe = null;
+  }
+  for (const unsub of activeTeamUnsubscribes.values()) {
+    unsub();
+  }
+  activeTeamUnsubscribes.clear();
+  currentCloudDocId = null;
+}
+
 // Google Authentication & Coach State
-// Hook up the local store save to trigger cloud sync
-setOnDataSaved(pushToFirestoreDebounced);
+// Hook up the local store save to sync coach profile metadata (never monolithic AppData)
+setOnDataSaved(syncCoachProfileDebounced);

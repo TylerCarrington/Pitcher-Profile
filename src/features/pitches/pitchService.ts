@@ -101,8 +101,10 @@ export function addPitchToSession(params: {
     } else {
       outsAfter = event.currentOuts;
     }
+    event.updatedAt = new Date().toISOString();
   }
 
+  const now = new Date().toISOString();
   const newPitch: Pitch = {
     id: `pitch_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     sessionId: params.sessionId,
@@ -124,9 +126,15 @@ export function addPitchToSession(params: {
     isFirstPitch,
     isStrikeout,
     isWalk,
-    timestamp: new Date().toISOString(),
+    timestamp: now,
+    updatedAt: now,
     recordedBy: params.recordedBy,
   };
+
+  const parentSession = data.sessions.find((s) => s.id === params.sessionId);
+  if (parentSession) {
+    parentSession.updatedAt = now;
+  }
 
   data.pitches.push(newPitch);
   saveData(data);
@@ -139,10 +147,17 @@ export function updatePitch(pitchUpdate: Partial<Pitch> & { id: string; sessionI
   const pitchIdx = data.pitches.findIndex((p) => p.id === pitchUpdate.id);
   if (pitchIdx === -1) return;
 
+  const now = new Date().toISOString();
   data.pitches[pitchIdx] = {
     ...data.pitches[pitchIdx],
     ...pitchUpdate,
+    updatedAt: now,
   };
+
+  const parentSession = data.sessions.find((s) => s.id === pitchUpdate.sessionId);
+  if (parentSession) {
+    parentSession.updatedAt = now;
+  }
 
   // Recalculate running counts for this session
   recalculateSessionPitches(data, pitchUpdate.sessionId);
@@ -153,6 +168,10 @@ export function updatePitch(pitchUpdate: Partial<Pitch> & { id: string; sessionI
 export function deletePitch(pitchId: string, sessionId: string): void {
   const data = loadData();
   data.pitches = data.pitches.filter((p) => p.id !== pitchId);
+  const parentSession = data.sessions.find((s) => s.id === sessionId);
+  if (parentSession) {
+    parentSession.updatedAt = new Date().toISOString();
+  }
   recalculateSessionPitches(data, sessionId);
   saveData(data);
   syncTeamBySessionId(sessionId, data);

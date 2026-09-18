@@ -23,6 +23,8 @@ export function getTeamsForCoach(coachId: string): Team[] {
   }
 
   return data.teams.filter((t) => {
+    if (t.isDeleted || t.deletedAt) return false;
+    if (data.deletedTeamIds && data.deletedTeamIds[t.id]) return false;
     if (matchingCoachIds.has(t.createdBy)) return true;
     if (t.memberCoachIds && t.memberCoachIds.some((id) => matchingCoachIds.has(id))) return true;
     if (coachEmail) {
@@ -67,6 +69,7 @@ export function saveTeam(teamData: {
     imageUrl: teamData.imageUrl?.trim() || undefined,
     createdBy: teamData.createdBy,
     createdAt: nowIso,
+    updatedAt: nowIso,
     memberCoachIds: [teamData.createdBy],
     inviteCode,
     inviteCodeCreatedAt: nowIso,
@@ -76,6 +79,7 @@ export function saveTeam(teamData: {
   data.teams.push(newTeam);
   saveData(data);
   syncSingleTeamToCloud(newTeam, data).catch(() => {});
+  syncTeamListeners(data.teams);
   return newTeam;
 }
 
@@ -87,6 +91,7 @@ export function updateTeamPitchPreset(
   const team = data.teams.find((t) => t.id === teamId);
   if (!team) return null;
   team.pitchRulePresetId = presetId;
+  team.updatedAt = new Date().toISOString();
   saveData(data);
   syncSingleTeamToCloud(team, data).catch(() => {});
   return team;
@@ -107,6 +112,7 @@ export function updateTeam(
   if (updates.pitchRulePresetId) {
     team.pitchRulePresetId = updates.pitchRulePresetId;
   }
+  team.updatedAt = new Date().toISOString();
   
   saveData(data);
   syncSingleTeamToCloud(team, data).catch(() => {});
@@ -129,8 +135,10 @@ export function regenerateTeamInvite(
   const prefix = team.name.replace(/[^a-zA-Z0-9]/g, '').substring(0, 5).toUpperCase() || 'TEAM';
   const newCode = `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
 
+  const now = new Date().toISOString();
   team.inviteCode = newCode;
-  team.inviteCodeCreatedAt = new Date().toISOString();
+  team.inviteCodeCreatedAt = now;
+  team.updatedAt = now;
   saveData(data);
   syncSingleTeamToCloud(team, data).catch(() => {});
   return { success: true, newCode };
@@ -389,6 +397,14 @@ export function deleteTeam(teamId: string, coachId: string): { success: boolean;
   const team = data.teams.find((t) => t.id === teamId);
   if (!team) return { success: false, error: 'Team not found' };
 
+  const now = new Date().toISOString();
+
+  // Record tombstone locally to prevent resurrection from stale caches
+  data.deletedTeamIds = {
+    ...(data.deletedTeamIds || {}),
+    [teamId]: now,
+  };
+
   // Allow any staff coach to delete a team for cleanup
   // Extract event IDs before filtering out events
   const teamEvents = data.events.filter((e) => e.teamId === teamId);
@@ -407,7 +423,7 @@ export function deleteTeam(teamId: string, coachId: string): { success: boolean;
     activeTeamUnsubscribes.delete(teamId);
   }
 
-  // Remove team document and invite code document from Firestore if connected
+  // Remove invite code document from Firestore if connected
   if (team.inviteCode) {
     const cleanCode = extractCleanInviteCode(team.inviteCode);
     if (cleanCode) {
@@ -415,7 +431,18 @@ export function deleteTeam(teamId: string, coachId: string): { success: boolean;
       deleteDoc(doc(db, 'invite_codes', cleanCode.replace(/-/g, ''))).catch(() => {});
     }
   }
-  deleteDoc(doc(db, 'teams', teamId)).catch(() => {});
+
+  // Write tombstone to Firestore so all other coaches and devices receive the deletion
+  setDoc(doc(db, 'teams', teamId), {
+    id: teamId,
+    name: team.name,
+    isDeleted: true,
+    deletedAt: now,
+    updatedAt: now,
+    lastUpdated: now,
+  }).catch((err) => {
+    console.warn('Notice writing team tombstone to Firestore:', err);
+  });
 
   saveData(data);
   return { success: true };

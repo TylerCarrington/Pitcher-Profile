@@ -24,6 +24,9 @@ export interface Player {
   throws?: 'R' | 'L';
   bats?: 'R' | 'L' | 'S';
   createdAt: string;
+  updatedAt?: string;
+  deletedAt?: string;
+  isDeleted?: boolean;
 }
 
 export type PitchRulePresetId =
@@ -66,6 +69,9 @@ export interface Team {
   imageUrl?: string;
   createdBy: string; // Coach ID
   createdAt: string;
+  updatedAt?: string;
+  deletedAt?: string;
+  isDeleted?: boolean;
   memberCoachIds: string[];
   inviteCode: string;
   inviteCodeCreatedAt?: string;
@@ -85,6 +91,9 @@ export interface BaseballEvent {
   status: EventStatus;
   createdBy: string; // Coach ID
   createdAt: string;
+  updatedAt?: string;
+  deletedAt?: string;
+  isDeleted?: boolean;
   endedAt?: string;
   // Phase 2: Game Mechanics State
   currentInning?: number; // 1, 2, 3...
@@ -140,6 +149,9 @@ export interface Pitch {
   isStrikeout?: boolean;
   isWalk?: boolean;
   timestamp: string;
+  updatedAt?: string;
+  deletedAt?: string;
+  isDeleted?: boolean;
   recordedBy: string; // coachId
 }
 
@@ -150,6 +162,9 @@ export interface PitcherSession {
   status: 'active' | 'completed';
   startedAt: string;
   endedAt?: string;
+  updatedAt?: string;
+  deletedAt?: string;
+  isDeleted?: boolean;
   // Notes are private per coach: coachId -> private note string
   coachNotes: Record<string, string>;
   warningFlags?: SafetyWarningFlag[]; // Phase 3 flagged warnings

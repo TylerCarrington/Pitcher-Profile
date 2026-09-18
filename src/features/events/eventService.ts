@@ -22,16 +22,18 @@ export function createEvent(eventInput: {
   createdBy: string;
 }): BaseballEvent {
   const data = loadData();
+  const now = new Date().toISOString();
   const newEvent: BaseballEvent = {
     id: `event_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     teamId: eventInput.teamId,
     type: eventInput.type,
     opponent: eventInput.opponent?.trim() || undefined,
     location: eventInput.location?.trim() || undefined,
-    scheduledAt: eventInput.scheduledAt || new Date().toISOString(),
+    scheduledAt: eventInput.scheduledAt || now,
     status: 'in_progress',
     createdBy: eventInput.createdBy,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
     currentInning: eventInput.type === 'game' ? 1 : undefined,
     currentOuts: eventInput.type === 'game' ? 0 : undefined,
     inningHalf: eventInput.type === 'game' ? 'top' : undefined,
@@ -67,6 +69,7 @@ export function updateEventInningAndOuts(
     if (update.inningHalf !== undefined) {
       event.inningHalf = update.inningHalf;
     }
+    event.updatedAt = new Date().toISOString();
     saveData(data);
     syncTeamByEventId(eventId, data);
   }
@@ -79,6 +82,7 @@ export function advanceEventInning(eventId: string): BaseballEvent | undefined {
   if (event) {
     event.currentInning = (event.currentInning || 1) + 1;
     event.currentOuts = 0;
+    event.updatedAt = new Date().toISOString();
     saveData(data);
     syncTeamByEventId(eventId, data);
   }
@@ -95,6 +99,7 @@ export function setEventOuts(eventId: string, outs: number): BaseballEvent | und
     } else {
       event.currentOuts = Math.max(0, outs);
     }
+    event.updatedAt = new Date().toISOString();
     saveData(data);
     syncTeamByEventId(eventId, data);
   }
@@ -107,6 +112,7 @@ export function endInningManual(eventId: string): BaseballEvent | undefined {
   if (event) {
     event.currentInning = (event.currentInning || 1) + 1;
     event.currentOuts = 0;
+    event.updatedAt = new Date().toISOString();
     saveData(data);
     syncTeamByEventId(eventId, data);
   }
@@ -135,13 +141,16 @@ export function endEvent(eventId: string): BaseballEvent | undefined {
   const data = loadData();
   const event = data.events.find((e) => e.id === eventId);
   if (event) {
+    const now = new Date().toISOString();
     event.status = 'ended';
-    event.endedAt = new Date().toISOString();
+    event.endedAt = now;
+    event.updatedAt = now;
     // Also complete any active sessions in this event
     data.sessions.forEach((s) => {
       if (s.eventId === eventId && s.status === 'active') {
         s.status = 'completed';
-        s.endedAt = new Date().toISOString();
+        s.endedAt = now;
+        s.updatedAt = now;
       }
     });
     saveData(data);
@@ -154,7 +163,9 @@ export function reopenEvent(eventId: string): void {
   const data = loadData();
   const event = data.events.find((e) => e.id === eventId);
   if (event) {
+    const now = new Date().toISOString();
     event.status = 'in_progress';
+    event.updatedAt = now;
     delete event.endedAt;
 
     // Reactivate the most recent pitcher session if no session is active
@@ -166,6 +177,7 @@ export function reopenEvent(eventId: string): void {
       );
       if (sorted[0]) {
         sorted[0].status = 'active';
+        sorted[0].updatedAt = now;
         delete sorted[0].endedAt;
       }
     }

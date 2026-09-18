@@ -12,12 +12,14 @@ export function getActiveSessionForEvent(eventId: string): PitcherSession | unde
 
 export function startPitcherSession(eventId: string, pitcherId: string): PitcherSession {
   const data = loadData();
+  const now = new Date().toISOString();
   const newSession: PitcherSession = {
     id: `session_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     eventId,
     pitcherId,
     status: 'active',
-    startedAt: new Date().toISOString(),
+    startedAt: now,
+    updatedAt: now,
     coachNotes: {},
   };
 
@@ -32,13 +34,16 @@ export function reopenPitcherSession(sessionId: string): PitcherSession | undefi
   const session = data.sessions.find((s) => s.id === sessionId);
   if (!session) return undefined;
 
+  const now = new Date().toISOString();
   session.status = 'active';
+  session.updatedAt = now;
   delete session.endedAt;
 
   // Ensure parent event is in progress
   const event = data.events.find((e) => e.id === session.eventId);
   if (event) {
     event.status = 'in_progress';
+    event.updatedAt = now;
     delete event.endedAt;
   }
 
@@ -51,8 +56,10 @@ export function endPitcherSession(sessionId: string): void {
   const data = loadData();
   const session = data.sessions.find((s) => s.id === sessionId);
   if (session) {
+    const now = new Date().toISOString();
     session.status = 'completed';
-    session.endedAt = new Date().toISOString();
+    session.endedAt = now;
+    session.updatedAt = now;
     saveData(data);
     syncTeamBySessionId(sessionId, data);
   }
@@ -80,6 +87,7 @@ export function updateSessionNotes(sessionId: string, coachId: string, notes: st
       session.coachNotes = {};
     }
     session.coachNotes[coachId] = notes;
+    session.updatedAt = new Date().toISOString();
     saveData(data);
     syncTeamBySessionId(sessionId, data);
   }
@@ -90,6 +98,7 @@ export function updateSessionUncountedPitches(sessionId: string, count: number):
   const session = data.sessions.find((s) => s.id === sessionId);
   if (session) {
     session.uncountedPitches = Math.max(0, count);
+    session.updatedAt = new Date().toISOString();
     saveData(data);
     syncTeamBySessionId(sessionId, data);
   }
@@ -113,13 +122,15 @@ export function addSessionWarningFlag(
   );
   if (exists) return null;
 
+  const now = new Date().toISOString();
   const newFlag: SafetyWarningFlag = {
     ...flagInput,
     id: `flag_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    timestamp: new Date().toISOString(),
+    timestamp: now,
   };
 
   session.warningFlags.push(newFlag);
+  session.updatedAt = now;
   saveData(data);
   syncTeamBySessionId(sessionId, data);
   return newFlag;

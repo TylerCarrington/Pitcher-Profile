@@ -55,6 +55,7 @@ export interface AppData {
   events: BaseballEvent[];
   sessions: PitcherSession[];
   pitches: Pitch[];
+  deletedTeamIds?: Record<string, string>;
 }
 
 const DEFAULT_COACHES: Coach[] = [];
@@ -63,6 +64,7 @@ const DEFAULT_PLAYERS: Player[] = [];
 const DEFAULT_EVENTS: BaseballEvent[] = [];
 const DEFAULT_SESSIONS: PitcherSession[] = [];
 const DEFAULT_PITCHES: Pitch[] = [];
+const DEFAULT_DELETED_TEAM_IDS: Record<string, string> = {};
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -147,6 +149,9 @@ export function loadData(): AppData {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.teams)) {
+        if (!parsed.deletedTeamIds || typeof parsed.deletedTeamIds !== 'object') {
+          parsed.deletedTeamIds = {};
+        }
         return parsed;
       }
     }
@@ -161,6 +166,7 @@ export function loadData(): AppData {
     events: DEFAULT_EVENTS,
     sessions: DEFAULT_SESSIONS,
     pitches: DEFAULT_PITCHES,
+    deletedTeamIds: DEFAULT_DELETED_TEAM_IDS,
   };
   saveData(initial);
   return initial;

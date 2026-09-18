@@ -20,7 +20,7 @@ import {
   Trash2,
   AlertTriangle,
 } from 'lucide-react';
-import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, deleteDoc, setDoc, doc } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { loadData, subscribeToStore } from '../../../store/localStore';
 import { Coach, Team } from '../../../types';
@@ -65,7 +65,13 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
         const teamsSnap = await getDocs(collection(db, 'teams'));
         teamsSnap.forEach((docSnap) => {
           const data = docSnap.data() as any;
-          if (data && data.id) {
+          if (
+            data &&
+            data.id &&
+            !data.isDeleted &&
+            !data.deletedAt &&
+            (!local.deletedTeamIds || !local.deletedTeamIds[data.id])
+          ) {
             fetchedTeams.push({
               id: data.id,
               name: data.name || 'Unnamed Team',
@@ -186,8 +192,17 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
     setIsDeletingTeam(true);
     const targetTeam = teamToDelete;
     try {
-      // 1. Delete team document from Firestore
-      await deleteDoc(doc(db, 'teams', targetTeam.id));
+      const now = new Date().toISOString();
+
+      // 1. Write tombstone to Firestore so all devices receive the deletion
+      await setDoc(doc(db, 'teams', targetTeam.id), {
+        id: targetTeam.id,
+        name: targetTeam.name,
+        isDeleted: true,
+        deletedAt: now,
+        updatedAt: now,
+        lastUpdated: now,
+      });
 
       // 2. Delete invite code document if present
       if (targetTeam.inviteCode) {
@@ -200,7 +215,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
         }
       }
 
-      // 3. Clean up from localStore
+      // 3. Clean up from localStore (which records deletedTeamIds)
       deleteTeam(targetTeam.id, currentCoach?.id || 'admin');
       setStoreData(loadData());
 

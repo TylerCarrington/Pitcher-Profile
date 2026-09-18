@@ -19,13 +19,17 @@ import {
   Code2,
   Trash2,
   AlertTriangle,
+  UserPlus,
+  UserMinus,
+  X,
+  Plus,
 } from 'lucide-react';
 import { collection, getDocs, deleteDoc, setDoc, doc } from 'firebase/firestore';
 import { db } from '../../../firebase';
 import { loadData, subscribeToStore } from '../../../store/localStore';
 import { Coach, Team } from '../../../types';
 import { useAuth } from '../../auth/hooks/useAuth';
-import { deleteTeam } from '../../teams/teamService';
+import { deleteTeam, addCoachToTeam, removeCoachFromTeam } from '../../teams/teamService';
 
 interface AdminDashboardViewProps {
   onClose: () => void;
@@ -44,6 +48,12 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
   const [teamToDelete, setTeamToDelete] = useState<Team | null>(null);
   const [isDeletingTeam, setIsDeletingTeam] = useState(false);
   const [adminNotification, setAdminNotification] = useState<string | null>(null);
+  const [teamForAddCoach, setTeamForAddCoach] = useState<Team | null>(null);
+  const [coachForAssignTeam, setCoachForAssignTeam] = useState<Coach | null>(null);
+  const [selectedCoachIdToAdd, setSelectedCoachIdToAdd] = useState('');
+  const [customCoachEmail, setCustomCoachEmail] = useState('');
+  const [selectedTeamIdToAssign, setSelectedTeamIdToAssign] = useState('');
+  const [isSubmittingCoachAction, setIsSubmittingCoachAction] = useState(false);
 
   const fetchCloudAdminData = useCallback(async () => {
     setIsLoadingCloud(true);
@@ -237,6 +247,90 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
     } finally {
       setIsDeletingTeam(false);
       setTeamToDelete(null);
+    }
+  };
+
+  const handleAdminAddCoachToTeam = async (targetTeamId: string, coachIdOrEmail: string) => {
+    const cleanTarget = coachIdOrEmail.trim();
+    if (!targetTeamId || !cleanTarget) return;
+    setIsSubmittingCoachAction(true);
+    try {
+      const res = addCoachToTeam(targetTeamId, cleanTarget, currentCoach?.id || 'admin');
+      if (!res.success) {
+        setAdminNotification(`Error: ${res.error || 'Failed to add coach'}`);
+        setTimeout(() => setAdminNotification(null), 4000);
+        return;
+      }
+
+      const local = loadData();
+      const updatedTeam = local.teams.find((t) => t.id === targetTeamId);
+      if (updatedTeam) {
+        const now = new Date().toISOString();
+        await setDoc(
+          doc(db, 'teams', targetTeamId),
+          {
+            memberCoachIds: updatedTeam.memberCoachIds,
+            updatedAt: now,
+            lastUpdated: now,
+          },
+          { merge: true },
+        );
+      }
+
+      setStoreData(local);
+      await fetchCloudAdminData();
+      setAdminNotification(`Successfully added coach to squad.`);
+      setTimeout(() => setAdminNotification(null), 4000);
+      setTeamForAddCoach(null);
+      setCoachForAssignTeam(null);
+      setSelectedCoachIdToAdd('');
+      setCustomCoachEmail('');
+      setSelectedTeamIdToAssign('');
+    } catch (err) {
+      console.error('Error adding coach to team:', err);
+      setAdminNotification('Error adding coach to team.');
+      setTimeout(() => setAdminNotification(null), 4000);
+    } finally {
+      setIsSubmittingCoachAction(false);
+    }
+  };
+
+  const handleAdminRemoveCoachFromTeam = async (targetTeamId: string, coachIdToRemove: string) => {
+    if (!targetTeamId || !coachIdToRemove) return;
+    setIsSubmittingCoachAction(true);
+    try {
+      const res = removeCoachFromTeam(targetTeamId, coachIdToRemove, currentCoach?.id || 'admin');
+      if (!res.success) {
+        setAdminNotification(`Error: ${res.error || 'Failed to remove coach'}`);
+        setTimeout(() => setAdminNotification(null), 4000);
+        return;
+      }
+
+      const local = loadData();
+      const updatedTeam = local.teams.find((t) => t.id === targetTeamId);
+      if (updatedTeam) {
+        const now = new Date().toISOString();
+        await setDoc(
+          doc(db, 'teams', targetTeamId),
+          {
+            memberCoachIds: updatedTeam.memberCoachIds,
+            updatedAt: now,
+            lastUpdated: now,
+          },
+          { merge: true },
+        );
+      }
+
+      setStoreData(local);
+      await fetchCloudAdminData();
+      setAdminNotification(`Successfully removed coach from squad.`);
+      setTimeout(() => setAdminNotification(null), 4000);
+    } catch (err) {
+      console.error('Error removing coach from team:', err);
+      setAdminNotification('Error removing coach from team.');
+      setTimeout(() => setAdminNotification(null), 4000);
+    } finally {
+      setIsSubmittingCoachAction(false);
     }
   };
 
@@ -621,24 +715,50 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
                       </div>
 
                       {/* Coaches List */}
-                      <div className="text-xs space-y-1 pt-1 border-t border-slate-800/60">
-                        <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-                          Associated Coaches:
+                      <div className="text-xs space-y-1.5 pt-2 border-t border-slate-800/60">
+                        <div className="flex items-center justify-between">
+                          <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
+                            Associated Coaches ({memberCoaches.length}):
+                          </div>
+                          <button
+                            type="button"
+                            id={`admin-add-coach-btn-${team.id}`}
+                            onClick={() => {
+                              setTeamForAddCoach(team);
+                              setSelectedCoachIdToAdd('');
+                              setCustomCoachEmail('');
+                            }}
+                            className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition flex items-center gap-1 cursor-pointer"
+                            title="Add Coach to Team"
+                          >
+                            <UserPlus className="w-3 h-3" />
+                            <span>+ Add Coach</span>
+                          </button>
                         </div>
                         <div className="flex flex-wrap gap-1.5 pt-1">
                           {memberCoaches.length === 0 ? (
                             <span className="text-[11px] text-slate-500 italic">
-                              Creator: {creatorCoach?.name || team.createdBy}
+                              Creator: {creatorCoach?.name || team.createdBy} (no additional coaches)
                             </span>
                           ) : (
                             memberCoaches.map((mc) => (
                               <span
                                 key={mc.id}
-                                className="px-2 py-0.5 text-[11px] rounded-lg bg-slate-800 text-slate-200 border border-slate-700/80 flex items-center gap-1"
+                                className="px-2 py-1 text-[11px] rounded-lg bg-slate-800 text-slate-200 border border-slate-700/80 flex items-center gap-1.5"
                               >
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" />
                                 <strong>{mc.name}</strong>
-                                <span className="text-[9px] text-slate-400">({mc.email})</span>
+                                <span className="text-[9px] text-slate-400 font-mono">({mc.email})</span>
+                                <button
+                                  type="button"
+                                  id={`admin-remove-coach-${team.id}-${mc.id}`}
+                                  onClick={() => handleAdminRemoveCoachFromTeam(team.id, mc.id)}
+                                  disabled={isSubmittingCoachAction}
+                                  className="p-0.5 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/20 transition cursor-pointer ml-1"
+                                  title={`Remove ${mc.name} from ${team.name}`}
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
                               </span>
                             ))
                           )}
@@ -722,23 +842,50 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
                       </div>
 
                       {/* Associated Teams Badges */}
-                      {ownedTeams.length > 0 && (
-                        <div className="space-y-1 pt-1 border-t border-slate-800/60">
+                      <div className="space-y-1.5 pt-2 border-t border-slate-800/60">
+                        <div className="flex items-center justify-between">
                           <div className="text-[10px] font-bold uppercase text-slate-400 tracking-wider">
-                            Squads Managed:
+                            Squads Managed ({ownedTeams.length}):
                           </div>
-                          <div className="flex flex-wrap gap-1.5">
-                            {ownedTeams.map((t) => (
+                          <button
+                            type="button"
+                            id={`admin-assign-squad-btn-${coach.id}`}
+                            onClick={() => {
+                              setCoachForAssignTeam(coach);
+                              setSelectedTeamIdToAssign('');
+                            }}
+                            className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition flex items-center gap-1 cursor-pointer"
+                            title="Assign Coach to Squad"
+                          >
+                            <UserPlus className="w-3 h-3" />
+                            <span>+ Assign to Squad</span>
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {ownedTeams.length === 0 ? (
+                            <span className="text-[11px] text-slate-500 italic">Not assigned to any team</span>
+                          ) : (
+                            ownedTeams.map((t) => (
                               <span
                                 key={t.id}
-                                className="px-2 py-0.5 text-[11px] rounded-md bg-slate-800 text-slate-200 border border-slate-700"
+                                className="px-2 py-1 text-[11px] rounded-md bg-slate-800 text-slate-200 border border-slate-700 flex items-center gap-1.5"
                               >
-                                {t.name}
+                                <span>{t.name}</span>
+                                <button
+                                  type="button"
+                                  id={`admin-unassign-squad-${coach.id}-${t.id}`}
+                                  onClick={() => handleAdminRemoveCoachFromTeam(t.id, coach.id)}
+                                  disabled={isSubmittingCoachAction}
+                                  className="p-0.5 rounded-md text-slate-400 hover:text-rose-400 hover:bg-rose-500/20 transition cursor-pointer ml-1"
+                                  title={`Remove ${coach.name} from ${t.name}`}
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
                               </span>
-                            ))}
-                          </div>
+                            ))
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
                   );
                 })}
@@ -856,6 +1003,210 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
                   <>
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Delete Squad</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Coach to Team Modal */}
+      {teamForAddCoach && (
+        <div
+          id="admin-add-coach-modal"
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
+        >
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Add Coach to Team</h3>
+                  <p className="text-[11px] text-slate-400">{teamForAddCoach.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setTeamForAddCoach(null);
+                  setSelectedCoachIdToAdd('');
+                  setCustomCoachEmail('');
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                  Select Existing Registered Coach
+                </label>
+                <select
+                  value={selectedCoachIdToAdd}
+                  onChange={(e) => {
+                    setSelectedCoachIdToAdd(e.target.value);
+                    if (e.target.value) setCustomCoachEmail('');
+                  }}
+                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-hidden focus:border-emerald-500"
+                >
+                  <option value="">-- Choose Coach from Registry --</option>
+                  {coachesList.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.email || c.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 my-2">
+                <div className="h-px bg-slate-800 flex-1" />
+                <span className="text-[10px] text-slate-500 font-bold uppercase">OR Enter Email</span>
+                <div className="h-px bg-slate-800 flex-1" />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                  Coach Email Address
+                </label>
+                <input
+                  type="email"
+                  placeholder="coach@example.com"
+                  value={customCoachEmail}
+                  onChange={(e) => {
+                    setCustomCoachEmail(e.target.value);
+                    if (e.target.value) setSelectedCoachIdToAdd('');
+                  }}
+                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-emerald-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isSubmittingCoachAction}
+                onClick={() => {
+                  setTeamForAddCoach(null);
+                  setSelectedCoachIdToAdd('');
+                  setCustomCoachEmail('');
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingCoachAction || (!selectedCoachIdToAdd && !customCoachEmail.trim())}
+                onClick={() => {
+                  const targetCoach = selectedCoachIdToAdd || customCoachEmail.trim();
+                  if (targetCoach && teamForAddCoach) {
+                    handleAdminAddCoachToTeam(teamForAddCoach.id, targetCoach);
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-lg shadow-emerald-950/40"
+              >
+                {isSubmittingCoachAction ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Adding...</span>
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Add Coach</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assign Coach to Squad Modal */}
+      {coachForAssignTeam && (
+        <div
+          id="admin-assign-squad-modal"
+          className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
+        >
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Assign Squad to Coach</h3>
+                  <p className="text-[11px] text-slate-400">{coachForAssignTeam.name} ({coachForAssignTeam.email})</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCoachForAssignTeam(null);
+                  setSelectedTeamIdToAssign('');
+                }}
+                className="text-slate-400 hover:text-white p-1 rounded-lg transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                  Select Squad
+                </label>
+                <select
+                  value={selectedTeamIdToAssign}
+                  onChange={(e) => setSelectedTeamIdToAssign(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-white focus:outline-hidden focus:border-emerald-500"
+                >
+                  <option value="">-- Choose Squad --</option>
+                  {teamsList.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} (Code: {t.inviteCode || t.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isSubmittingCoachAction}
+                onClick={() => {
+                  setCoachForAssignTeam(null);
+                  setSelectedTeamIdToAssign('');
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isSubmittingCoachAction || !selectedTeamIdToAssign}
+                onClick={() => {
+                  if (selectedTeamIdToAssign && coachForAssignTeam) {
+                    handleAdminAddCoachToTeam(selectedTeamIdToAssign, coachForAssignTeam.id);
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-lg shadow-indigo-950/40"
+              >
+                {isSubmittingCoachAction ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Assigning...</span>
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>Assign Squad</span>
                   </>
                 )}
               </button>

@@ -443,9 +443,13 @@ export function removeCoachFromTeam(
   const team = data.teams.find((t) => t.id === teamId);
   if (!team) return { success: false, error: 'Team not found' };
 
-  // Only the team creator can remove other coaches
-  if (team.createdBy !== requesterCoachId) {
-    return { success: false, error: 'Only the team creator can remove other coaches.' };
+  // Authorization check: Only team creator or administrator can remove coaches
+  const requester = data.coaches.find((c) => c.id === requesterCoachId) || { id: requesterCoachId, email: requesterCoachId };
+  const requesterEmail = requester.email?.trim().toLowerCase();
+  const isAdmin = requesterEmail === 'tylercarringtonwa@gmail.com' || requesterCoachId === 'admin';
+
+  if (!isAdmin && team.createdBy !== requesterCoachId) {
+    return { success: false, error: 'Only the team creator or an administrator can remove other coaches.' };
   }
 
   const matchingIds = getMatchingCoachIdentifiers(data, coachIdToRemove);
@@ -456,6 +460,62 @@ export function removeCoachFromTeam(
   team.memberCoachIds = (team.memberCoachIds || []).filter(
     (id) => typeof id === 'string' && !matchingIds.has(id) && !matchingIds.has(id.trim().toLowerCase()),
   );
+  const now = new Date().toISOString();
+  team.updatedAt = now;
+
+  saveData(data);
+
+  syncSingleTeamToCloud(team).catch(() => {});
+  syncCoachProfileToCloud().catch(() => {});
+
+  return { success: true };
+}
+
+export function addCoachToTeam(
+  teamId: string,
+  coachIdOrEmail: string,
+  requesterCoachId: string = 'admin'
+): { success: boolean; error?: string } {
+  const data = loadData();
+  const team = data.teams.find((t) => t.id === teamId);
+  if (!team) return { success: false, error: 'Team not found' };
+
+  const requester = data.coaches.find((c) => c.id === requesterCoachId) || { id: requesterCoachId, email: requesterCoachId };
+  const requesterEmail = requester.email?.trim().toLowerCase();
+  const isAdmin = requesterEmail === 'tylercarringtonwa@gmail.com' || requesterCoachId === 'admin';
+
+  if (!isAdmin && team.createdBy !== requesterCoachId) {
+    return { success: false, error: 'Only the team creator or an administrator can add coaches.' };
+  }
+
+  const cleanTarget = coachIdOrEmail.trim();
+  if (!cleanTarget) return { success: false, error: 'Invalid coach target.' };
+
+  const targetCoach = data.coaches.find(
+    (c) => c.id === cleanTarget || (c.email && c.email.toLowerCase() === cleanTarget.toLowerCase())
+  );
+
+  const idToAdd = targetCoach?.id || (cleanTarget.includes('@') ? `coach_email_${cleanTarget.toLowerCase().replace(/[^a-z0-9]/g, '_')}` : cleanTarget);
+
+  if (!team.memberCoachIds) team.memberCoachIds = [];
+
+  const matchingIds = getMatchingCoachIdentifiers(data, idToAdd);
+  if (targetCoach?.email) {
+    matchingIds.add(targetCoach.email.toLowerCase());
+  }
+
+  const alreadyInTeam =
+    team.memberCoachIds.some((id) => typeof id === 'string' && (matchingIds.has(id) || matchingIds.has(id.toLowerCase()))) ||
+    matchingIds.has(team.createdBy) ||
+    matchingIds.has(team.createdBy.toLowerCase());
+
+  if (!alreadyInTeam) {
+    team.memberCoachIds.push(idToAdd);
+    if (targetCoach?.email && !team.memberCoachIds.includes(targetCoach.email)) {
+      team.memberCoachIds.push(targetCoach.email);
+    }
+  }
+
   const now = new Date().toISOString();
   team.updatedAt = now;
 

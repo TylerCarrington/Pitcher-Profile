@@ -150,14 +150,21 @@ export async function syncCoachProfileToCloud(
 
   const data = loadData();
   const coachEmail = current.email?.trim().toLowerCase();
+  const matchingIds = new Set<string>([current.id]);
+  if (coachEmail) {
+    matchingIds.add(coachEmail);
+    matchingIds.add(`coach_email_${coachEmail.replace(/[^a-z0-9]/g, '_')}`);
+  }
+  if (current.googleId) matchingIds.add(current.googleId);
+
   const joinedTeamIds =
     teamIdsOverride ||
     data.teams
       .filter((t) => {
         if (t.isDeleted || t.deletedAt) return false;
         if (data.deletedTeamIds && data.deletedTeamIds[t.id]) return false;
-        if (t.createdBy === current.id) return true;
-        if (t.memberCoachIds && t.memberCoachIds.includes(current.id)) return true;
+        if (matchingIds.has(t.createdBy) || matchingIds.has(t.createdBy.toLowerCase())) return true;
+        if (t.memberCoachIds && t.memberCoachIds.some((id) => typeof id === 'string' && (matchingIds.has(id) || matchingIds.has(id.trim().toLowerCase())))) return true;
         if (coachEmail) {
           const creator = data.coaches.find((c) => c.id === t.createdBy);
           if (creator?.email?.toLowerCase() === coachEmail) return true;

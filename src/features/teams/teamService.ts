@@ -1,6 +1,6 @@
 import { Team, Coach, PitchRulePresetId } from '../../types';
-import { loadData, saveData, extractCleanInviteCode } from '../../store/localStore';
-import { syncSingleTeamToCloud, syncTeamListeners, activeTeamUnsubscribes } from '../sync/syncService';
+import { AppData, loadData, saveData, extractCleanInviteCode } from '../../store/localStore';
+import { syncSingleTeamToCloud, syncCoachProfileToCloud, syncTeamListeners, activeTeamUnsubscribes } from '../sync/syncService';
 import { db } from '../../firebase';
 import { doc, getDoc, setDoc, deleteDoc, query, collection, where, getDocs } from 'firebase/firestore';
 import { getCurrentCoach } from '../auth/authService';
@@ -11,27 +11,64 @@ import {
   extractShortId,
 } from '../../utils/slugUtils';
 
-export function getTeamsForCoach(coachId: string): Team[] {
-  if (!coachId) return [];
-  const data = loadData();
-  const currentCoach = data.coaches.find((c) => c.id === coachId);
-  const coachEmail = currentCoach?.email?.trim().toLowerCase();
+export function getMatchingCoachIdentifiers(data: AppData, coachIdOrEmail: string): Set<string> {
+  const ids = new Set<string>();
+  if (!coachIdOrEmail) return ids;
 
-  // Find all coach IDs matching this coach's email to ensure seamless multi-device & legacy ID matching
-  const matchingCoachIds = new Set<string>([coachId]);
+  const cleanInput = coachIdOrEmail.trim().toLowerCase();
+  ids.add(coachIdOrEmail);
+  ids.add(cleanInput);
+
+  const foundCoach = data.coaches.find(
+    (c) =>
+      c.id === coachIdOrEmail ||
+      c.id?.toLowerCase() === cleanInput ||
+      (c.email && c.email.trim().toLowerCase() === cleanInput),
+  );
+
+  if (foundCoach) {
+    if (foundCoach.id) {
+      ids.add(foundCoach.id);
+      ids.add(foundCoach.id.trim().toLowerCase());
+    }
+    if (foundCoach.email) {
+      const cleanEmail = foundCoach.email.trim().toLowerCase();
+      ids.add(cleanEmail);
+      ids.add(`coach_email_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`);
+    }
+    if (foundCoach.googleId) {
+      ids.add(foundCoach.googleId);
+      ids.add(foundCoach.googleId.trim().toLowerCase());
+    }
+  }
+
+  const coachEmail = foundCoach?.email?.trim().toLowerCase() || (cleanInput.includes('@') ? cleanInput : null);
   if (coachEmail) {
     data.coaches.forEach((c) => {
       if (c.email && c.email.trim().toLowerCase() === coachEmail) {
-        matchingCoachIds.add(c.id);
+        if (c.id) {
+          ids.add(c.id);
+          ids.add(c.id.trim().toLowerCase());
+        }
       }
     });
   }
 
+  return ids;
+}
+
+export function getTeamsForCoach(coachId: string): Team[] {
+  if (!coachId) return [];
+  const data = loadData();
+  const matchingCoachIds = getMatchingCoachIdentifiers(data, coachId);
+  const currentCoach = data.coaches.find((c) => c.id === coachId);
+  const coachEmail = currentCoach?.email?.trim().toLowerCase();
+
   return data.teams.filter((t) => {
     if (t.isDeleted || t.deletedAt) return false;
     if (data.deletedTeamIds && data.deletedTeamIds[t.id]) return false;
-    if (matchingCoachIds.has(t.createdBy)) return true;
-    if (t.memberCoachIds && t.memberCoachIds.some((id) => matchingCoachIds.has(id))) return true;
+    if (matchingCoachIds.has(t.createdBy) || matchingCoachIds.has(t.createdBy.toLowerCase())) return true;
+    if (t.memberCoachIds && t.memberCoachIds.some((id) => typeof id === 'string' && (matchingCoachIds.has(id) || matchingCoachIds.has(id.trim().toLowerCase())))) return true;
     if (coachEmail) {
       const creator = data.coaches.find((c) => c.id === t.createdBy);
       if (creator?.email?.toLowerCase() === coachEmail) return true;
@@ -411,12 +448,22 @@ export function removeCoachFromTeam(
     return { success: false, error: 'Only the team creator can remove other coaches.' };
   }
 
-  if (coachIdToRemove === team.createdBy) {
+  const matchingIds = getMatchingCoachIdentifiers(data, coachIdToRemove);
+  if (matchingIds.has(team.createdBy) || matchingIds.has(team.createdBy.toLowerCase())) {
     return { success: false, error: 'The team creator cannot be removed from the team.' };
   }
 
-  team.memberCoachIds = team.memberCoachIds.filter((id) => id !== coachIdToRemove);
+  team.memberCoachIds = (team.memberCoachIds || []).filter(
+    (id) => typeof id === 'string' && !matchingIds.has(id) && !matchingIds.has(id.trim().toLowerCase()),
+  );
+  const now = new Date().toISOString();
+  team.updatedAt = now;
+
   saveData(data);
+
+  syncSingleTeamToCloud(team).catch(() => {});
+  syncCoachProfileToCloud().catch(() => {});
+
   return { success: true };
 }
 
@@ -428,15 +475,32 @@ export function leaveTeam(
   const team = data.teams.find((t) => t.id === teamId);
   if (!team) return { success: false, error: 'Team not found' };
 
-  if (team.createdBy === coachId) {
+  const matchingIds = getMatchingCoachIdentifiers(data, coachId);
+  if (matchingIds.has(team.createdBy) || matchingIds.has(team.createdBy.toLowerCase())) {
     return {
       success: false,
       error: 'As the team creator, you cannot leave the team. You can delete the team if you wish to remove it entirely.',
     };
   }
 
-  team.memberCoachIds = team.memberCoachIds.filter((id) => id !== coachId);
+  team.memberCoachIds = (team.memberCoachIds || []).filter(
+    (id) => typeof id === 'string' && !matchingIds.has(id) && !matchingIds.has(id.trim().toLowerCase()),
+  );
+
+  const now = new Date().toISOString();
+  team.updatedAt = now;
+
   saveData(data);
+
+  if (activeTeamUnsubscribes.has(team.id)) {
+    const unsub = activeTeamUnsubscribes.get(team.id);
+    if (unsub) unsub();
+    activeTeamUnsubscribes.delete(team.id);
+  }
+
+  syncSingleTeamToCloud(team).catch(() => {});
+  syncCoachProfileToCloud().catch(() => {});
+
   return { success: true };
 }
 

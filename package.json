@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx scripts/verify-sync-matrix.ts && tsx scripts/verify-undo-pitch.ts && tsx scripts/verify-url-routing.ts && tsx scripts/verify-clean-urls.ts && tsx scripts/verify-header-navigation.ts"
+    "test": "tsx scripts/verify-sync-matrix.ts && tsx scripts/verify-undo-pitch.ts && tsx scripts/verify-url-routing.ts && tsx scripts/verify-clean-urls.ts && tsx scripts/verify-header-navigation.ts && tsx scripts/verify-leave-team.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

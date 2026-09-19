@@ -7,7 +7,7 @@ interface SessionNotesProps {
   session?: PitcherSession | null;
   currentCoach?: Coach | null;
   initialNotes?: string;
-  onSaveNotes?: (notes: string) => void;
+  onSaveNotes?: ((notes: string) => void) | ((sessionId: string, coachId: string, notes: string) => void);
 }
 
 export const SessionNotes: React.FC<SessionNotesProps> = (props) => {
@@ -30,30 +30,62 @@ export const SessionNotes: React.FC<SessionNotesProps> = (props) => {
   const [isShared, setIsShared] = useState(isInitiallyShared);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const timerRef = useRef<number | null>(null);
+  const notesRef = useRef(cleanInitialText);
+  const isSharedRef = useRef(isInitiallyShared);
+  const isDirtyRef = useRef(false);
+
+  notesRef.current = notes;
+  isSharedRef.current = isShared;
 
   // Sync when initialNotes changes from external switch or session change
   useEffect(() => {
     const shared = initialNotes ? initialNotes.startsWith('[SHARED]') : false;
     const text = initialNotes ? initialNotes.replace(/^\[SHARED\]\s*/, '') : '';
     setNotes(text);
+    notesRef.current = text;
     setIsShared(shared);
+    isSharedRef.current = shared;
     setSaveStatus('saved');
+    isDirtyRef.current = false;
   }, [sessionId, initialNotes]);
+
+  const executeSave = (text: string, shared: boolean) => {
+    if (!onSaveNotes) return;
+    const formattedNote = shared ? `[SHARED] ${text}` : text;
+    if (onSaveNotes.length >= 3) {
+      (onSaveNotes as (sid: string, cid: string, n: string) => void)(sessionId, coachId, formattedNote);
+    } else {
+      (onSaveNotes as (n: string) => void)(formattedNote);
+    }
+    setSaveStatus('saved');
+    isDirtyRef.current = false;
+  };
+
+  // Immediate flush on unmount if any edits were pending
+  useEffect(() => {
+    return () => {
+      if (isDirtyRef.current) {
+        if (timerRef.current) {
+          window.clearTimeout(timerRef.current);
+          timerRef.current = null;
+        }
+        executeSave(notesRef.current, isSharedRef.current);
+      }
+    };
+  }, [sessionId, coachId]);
 
   const triggerSave = (text: string, shared: boolean) => {
     setSaveStatus('saving');
+    isDirtyRef.current = true;
 
     if (timerRef.current) {
       window.clearTimeout(timerRef.current);
     }
 
     timerRef.current = window.setTimeout(() => {
-      const formattedNote = shared ? `[SHARED] ${text}` : text;
-      if (onSaveNotes) {
-        onSaveNotes(formattedNote);
-      }
-      setSaveStatus('saved');
-    }, 600);
+      executeSave(text, shared);
+      timerRef.current = null;
+    }, 500);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -62,11 +94,28 @@ export const SessionNotes: React.FC<SessionNotesProps> = (props) => {
     triggerSave(text, isShared);
   };
 
+  const handleBlur = () => {
+    if (isDirtyRef.current) {
+      if (timerRef.current) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      executeSave(notesRef.current, isSharedRef.current);
+    }
+  };
+
   const handleTogglePrivacy = () => {
     const nextShared = !isShared;
     setIsShared(nextShared);
-    triggerSave(notes, nextShared);
+    isSharedRef.current = nextShared;
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    executeSave(notes, nextShared);
   };
+
+  const coachDisplayName = currentCoach?.name || 'Coach';
 
   return (
     <div id="session-notes-box" className="w-full bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-2.5">
@@ -103,7 +152,7 @@ export const SessionNotes: React.FC<SessionNotesProps> = (props) => {
             ) : (
               <>
                 <Lock className="w-3 h-3 text-amber-700 shrink-0" />
-                <span>Private to {currentCoach.name}</span>
+                <span>Private to {coachDisplayName}</span>
               </>
             )}
           </button>
@@ -126,10 +175,11 @@ export const SessionNotes: React.FC<SessionNotesProps> = (props) => {
         id="session-notes-textarea"
         value={notes}
         onChange={handleChange}
+        onBlur={handleBlur}
         placeholder={
           isShared
             ? 'Type coaching observations visible to all team coaches...'
-            : `Type private scouting observations, mechanics notes, velocity feedback, or cues for ${currentCoach.name}...`
+            : `Type private scouting observations, mechanics notes, velocity feedback, or cues for ${coachDisplayName}...`
         }
         rows={3}
         className="w-full text-xs sm:text-sm p-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 text-slate-800 placeholder:text-slate-400 resize-none transition"
@@ -143,7 +193,7 @@ export const SessionNotes: React.FC<SessionNotesProps> = (props) => {
             </span>
           ) : (
             <span className="text-amber-700 font-medium flex items-center gap-1">
-              <Lock className="w-3 h-3" /> Locked — Private to {currentCoach.name}. Tap badge to share.
+              <Lock className="w-3 h-3" /> Locked — Private to {coachDisplayName}. Tap badge to share.
             </span>
           )}
         </span>

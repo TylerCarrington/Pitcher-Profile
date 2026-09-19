@@ -267,6 +267,7 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
             onDeleteSession={onDeleteSession}
             onBackToTeam={onBackToTeam}
             onEndEvent={() => setShowEndEventConfirm(true)}
+            onSaveNotes={onSaveNotes}
             onClosePicker={() => {
               if (activeSession && activePitcher) {
                 setShowPitcherPicker(false);
@@ -486,7 +487,11 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
           <SessionNotes
             session={activeSession}
             currentCoach={currentCoach}
-            onSaveNotes={onSaveNotes}
+            onSaveNotes={(notesText) => {
+              if (activeSession && currentCoach) {
+                onSaveNotes(activeSession.id, currentCoach.id, notesText);
+              }
+            }}
           />
         )}
 

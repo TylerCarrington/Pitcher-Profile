@@ -62,8 +62,12 @@ export const PitcherReviewCard: React.FC<PitcherReviewCardProps> = ({
   // Gather notes for this pitcher
   const eventSessions = useMemo(() => (event ? getSessionsForEvent(event.id) : []), [event]);
   const pitcherSessions = useMemo(() => eventSessions.filter((s) => s.pitcherId === pitcher.id), [eventSessions, pitcher.id]);
-  const targetSession = session || pitcherSessions[0];
   const currentCoachId = currentCoach?.id;
+  const sessionWithNote = useMemo(() => {
+    if (!currentCoachId) return session || pitcherSessions[0];
+    return pitcherSessions.find((s) => s.coachNotes?.[currentCoachId]) || session || pitcherSessions[0];
+  }, [pitcherSessions, currentCoachId, session]);
+  const targetSession = sessionWithNote;
   const initialCoachNote = (targetSession && currentCoachId && targetSession.coachNotes?.[currentCoachId]) || '';
 
   const exportCoachNotes = useMemo(() => {

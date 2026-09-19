@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BaseballEvent, Player, Pitch, Team, PitcherSession } from '../../../types';
 import { calculateGamePitchingMetrics, getCanonicalTeamSlugForTeam } from '../../../storage';
@@ -68,6 +68,13 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = (props) => 
     if (!team) return [];
     return aggregateEventPitcherStats(team.id, players, allEventSessions, allEventPitches);
   }, [team, players, allEventSessions, allEventPitches]);
+
+  // Automatically expand if single pitcher session (common for bullpen sessions)
+  useEffect(() => {
+    if (pitcherStats.length === 1 && !expandedPitcherId) {
+      setExpandedPitcherId(pitcherStats[0].pitcher.id);
+    }
+  }, [pitcherStats, expandedPitcherId]);
 
   const totalPitches = useMemo(() => {
     return pitcherStats.reduce((acc, curr) => acc + curr.pitchesThrown, 0);

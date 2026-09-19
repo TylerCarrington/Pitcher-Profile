@@ -12,10 +12,17 @@ import {
   Trash2,
   History,
   CheckCircle2,
+  FileText,
+  MessageSquare,
+  Edit2,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import { PitchSmartBadge } from '../../players/components/PitchSmartBadge';
 import { getPitchesForSession } from '../../pitches/pitchService';
 import { useTeam } from '../../teams/hooks/useTeam';
+import { useAuth } from '../../auth/hooks/useAuth';
+import { PitcherNotesEditor } from '../../events/components/PitcherNotesEditor';
 
 export interface PitcherPickerProps {
   event?: BaseballEvent | null;
@@ -29,6 +36,7 @@ export interface PitcherPickerProps {
   onDeleteSession?: (sessionId: string) => void;
   onBackToTeam: () => void;
   onEndEvent: () => void;
+  onSaveNotes?: (sessionId: string, coachId: string, notes: string) => void;
   onClosePicker?: () => void;
 }
 
@@ -44,15 +52,18 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
   onDeleteSession,
   onBackToTeam,
   onEndEvent,
+  onSaveNotes,
   onClosePicker,
 }) => {
   const [sessionToDelete, setSessionToDelete] = useState<PitcherSession | null>(null);
+  const [editingNoteSessionId, setEditingNoteSessionId] = useState<string | null>(null);
   const [pendingSwitch, setPendingSwitch] = useState<{
     player: Player;
     existingSessionId?: string;
   } | null>(null);
 
   const { selectedTeam } = useTeam();
+  const { currentCoach, allCoaches } = useAuth();
   const teamPresetId = selectedTeam?.pitchRulePresetId || 'usa_pitch_smart';
 
   const isGame = event?.type === 'game';
@@ -284,145 +295,259 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
               const strikePercent =
                 pitchesCount > 0 ? Math.round((strikesCount / pitchesCount) * 100) : 0;
 
+              const sessionCoachNotes = Object.entries(session.coachNotes || {})
+                .filter(([_, note]) => typeof note === 'string' && note.trim().length > 0)
+                .map(([cId, rawNote]) => {
+                  const str = String(rawNote || '');
+                  const isShared = str.startsWith('[SHARED]');
+                  const noteText = str.replace(/^\[SHARED\]\s*/, '').trim();
+                  const isAuthor = currentCoach?.id === cId;
+                  const author = allCoaches.find((c) => c.id === cId);
+                  const authorName = author?.name || (isAuthor ? (currentCoach?.name || 'You') : 'Coach');
+                  const isHeadCoachOrAdmin =
+                    currentCoach?.email?.toLowerCase() === 'tylercarringtonwa@gmail.com' ||
+                    currentCoach?.role === 'head_coach';
+                  return {
+                    coachId: cId,
+                    authorName,
+                    isAuthor,
+                    isShared,
+                    noteText,
+                    isVisible: isShared || isAuthor || isHeadCoachOrAdmin,
+                  };
+                })
+                .filter((n) => n.isVisible);
+
               return (
                 <div
                   key={session.id}
                   id={`event-session-row-${session.id}`}
-                  className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white hover:bg-slate-50/70 transition"
+                  className="p-4 sm:p-5 flex flex-col gap-3 bg-white hover:bg-slate-50/70 transition"
                 >
-                  {/* Pitcher Info (Left): Avatar + Name + RHP + Status + Strike Rate */}
-                  <div className="flex items-center gap-3">
-                    <div className="relative shrink-0">
-                      {pitcher?.imageUrl ? (
-                        <img
-                          src={pitcher.imageUrl}
-                          alt={pitcher.name}
-                          className="w-12 h-12 rounded-full object-cover border-2 border-slate-200 shadow-xs"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-slate-100 border-2 border-slate-300 flex items-center justify-center font-black text-slate-600 text-lg">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    {/* Pitcher Info (Left): Avatar + Name + RHP + Status + Strike Rate */}
+                    <div className="flex items-center gap-3">
+                      <div className="relative shrink-0">
+                        {pitcher?.imageUrl ? (
+                          <img
+                            src={pitcher.imageUrl}
+                            alt={pitcher.name}
+                            className="w-12 h-12 rounded-full object-cover border-2 border-slate-200 shadow-xs"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-slate-100 border-2 border-slate-300 flex items-center justify-center font-black text-slate-600 text-lg">
+                            #{pitcher?.jerseyNumber || '?'}
+                          </div>
+                        )}
+                        <span className="absolute -bottom-1 -right-1 bg-slate-900 text-white font-bold text-[10px] px-1.5 rounded-full border border-white">
                           #{pitcher?.jerseyNumber || '?'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-bold text-base text-slate-900 whitespace-nowrap">
+                            {pitcher?.name || 'Pitcher'}
+                          </h4>
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase shrink-0">
+                            {pitcher?.throws || 'R'}HP
+                          </span>
+                          {isCurrentActive ? (
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider shrink-0">
+                              Tracking Now
+                            </span>
+                          ) : isSessionActive ? (
+                            <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold uppercase tracking-wider shrink-0">
+                              Active
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-semibold uppercase tracking-wider shrink-0">
+                              Completed
+                            </span>
+                          )}
                         </div>
-                      )}
-                      <span className="absolute -bottom-1 -right-1 bg-slate-900 text-white font-bold text-[10px] px-1.5 rounded-full border border-white">
-                        #{pitcher?.jerseyNumber || '?'}
-                      </span>
+                        <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          <span>{strikePercent}% Strike Rate</span>
+                          <span>&bull;</span>
+                          <span>{pitchesCount} {pitchesCount === 1 ? 'Pitch' : 'Pitches'}</span>
+                          <span>&bull;</span>
+                          <span className="text-slate-400">
+                            Started {new Date(session.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                          </span>
+                        </p>
+                      </div>
                     </div>
 
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-bold text-base text-slate-900 whitespace-nowrap">
-                          {pitcher?.name || 'Pitcher'}
-                        </h4>
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase shrink-0">
-                          {pitcher?.throws || 'R'}HP
-                        </span>
+                    {/* Stats Box, PitchSmart Badge & Action Buttons (Right) */}
+                    <div className="flex flex-wrap items-center gap-3 md:ml-auto">
+                      <PitchSmartBadge
+                        pitchCount={pitchesCount}
+                        seasonAge={pitcher?.seasonAge || 12}
+                        eventDate={event?.scheduledAt}
+                        playerName={pitcher?.name}
+                        presetId={teamPresetId}
+                        isBullpen={event?.type === 'bullpen'}
+                      />
+
+                      <div className="flex items-center gap-3 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
+                        <div className="text-center">
+                          <div className="text-[10px] uppercase font-bold text-slate-400">Pitches</div>
+                          <div className="font-mono font-bold text-slate-900">{pitchesCount}</div>
+                        </div>
+                        <div className="h-5 w-px bg-slate-200" />
+                        <div className="text-center">
+                          <div className="text-[10px] uppercase font-bold text-amber-600">Balls</div>
+                          <div className="font-mono font-bold text-amber-600">{ballsCount}</div>
+                        </div>
+                        <div className="h-5 w-px bg-slate-200" />
+                        <div className="text-center">
+                          <div className="text-[10px] uppercase font-bold text-emerald-600">Strikes</div>
+                          <div className="font-mono font-bold text-emerald-600">{strikesCount}</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
                         {isCurrentActive ? (
-                          <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider shrink-0">
-                            Tracking Now
-                          </span>
+                          <button
+                            type="button"
+                            onClick={onClosePicker}
+                            className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer transition active:scale-95"
+                          >
+                            Resume View
+                          </button>
                         ) : isSessionActive ? (
-                          <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] font-bold uppercase tracking-wider shrink-0">
-                            Active
-                          </span>
+                          <button
+                            type="button"
+                            id={`switch-session-${session.id}`}
+                            onClick={() => {
+                              if (pitcher) handleSelectPitcher(pitcher, session.id);
+                            }}
+                            className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition shadow-xs cursor-pointer active:scale-95"
+                          >
+                            Switch to Pitcher
+                          </button>
                         ) : (
-                          <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px] font-semibold uppercase tracking-wider shrink-0">
-                            Completed
-                          </span>
+                          <>
+                            {onReopenSession && (
+                              <button
+                                type="button"
+                                id={`reopen-session-${session.id}`}
+                                onClick={() => {
+                                  if (pitcher) handleSelectPitcher(pitcher, session.id);
+                                }}
+                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+                                title="Reopen ended session"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                                <span>Reopen</span>
+                              </button>
+                            )}
+
+                            {onDeleteSession && (
+                              <button
+                                type="button"
+                                id={`delete-session-${session.id}`}
+                                onClick={() => setSessionToDelete(session)}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                                title="Delete session"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
-                      <p className="text-xs text-slate-500 flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        <span>{strikePercent}% Strike Rate</span>
-                        <span>&bull;</span>
-                        <span>{pitchesCount} {pitchesCount === 1 ? 'Pitch' : 'Pitches'}</span>
-                        <span>&bull;</span>
-                        <span className="text-slate-400">
-                          Started {new Date(session.startedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                        </span>
-                      </p>
                     </div>
                   </div>
 
-                  {/* Stats Box, PitchSmart Badge & Action Buttons (Right) */}
-                  <div className="flex flex-wrap items-center gap-3 md:ml-auto">
-                    <PitchSmartBadge
-                      pitchCount={pitchesCount}
-                      seasonAge={pitcher?.seasonAge || 12}
-                      eventDate={event?.scheduledAt}
-                      playerName={pitcher?.name}
-                      presetId={teamPresetId}
-                      isBullpen={event?.type === 'bullpen'}
-                    />
+                  {/* Coaching Notes Section for this Session */}
+                  {sessionCoachNotes.length > 0 && (
+                    <div className="mt-2 pt-2.5 border-t border-slate-100 w-full space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
+                          <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Coaching Notes &amp; Observations:</span>
+                        </div>
+                        {onSaveNotes && currentCoach && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingNoteSessionId(editingNoteSessionId === session.id ? null : session.id)
+                            }
+                            className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            <span>{editingNoteSessionId === session.id ? 'Close Editor' : 'Edit Note'}</span>
+                          </button>
+                        )}
+                      </div>
 
-                    <div className="flex items-center gap-3 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
-                      <div className="text-center">
-                        <div className="text-[10px] uppercase font-bold text-slate-400">Pitches</div>
-                        <div className="font-mono font-bold text-slate-900">{pitchesCount}</div>
-                      </div>
-                      <div className="h-5 w-px bg-slate-200" />
-                      <div className="text-center">
-                        <div className="text-[10px] uppercase font-bold text-amber-600">Balls</div>
-                        <div className="font-mono font-bold text-amber-600">{ballsCount}</div>
-                      </div>
-                      <div className="h-5 w-px bg-slate-200" />
-                      <div className="text-center">
-                        <div className="text-[10px] uppercase font-bold text-emerald-600">Strikes</div>
-                        <div className="font-mono font-bold text-emerald-600">{strikesCount}</div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        {sessionCoachNotes.map((n, idx) => (
+                          <div
+                            key={`${session.id}-note-${idx}`}
+                            className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-xs space-y-1"
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-slate-800">{n.authorName}</span>
+                              <span
+                                className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
+                                  n.isShared
+                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                                }`}
+                              >
+                                {n.isShared ? (
+                                  <>
+                                    <Unlock className="w-2.5 h-2.5 text-emerald-600" />
+                                    <span>Shared with Team</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Lock className="w-2.5 h-2.5 text-amber-700" />
+                                    <span>Private to You</span>
+                                  </>
+                                )}
+                              </span>
+                            </div>
+                            <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{n.noteText}</p>
+                          </div>
+                        ))}
                       </div>
                     </div>
+                  )}
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      {isCurrentActive ? (
-                        <button
-                          type="button"
-                          onClick={onClosePicker}
-                          className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs cursor-pointer transition active:scale-95"
-                        >
-                          Resume View
-                        </button>
-                      ) : isSessionActive ? (
-                        <button
-                          type="button"
-                          id={`switch-session-${session.id}`}
-                          onClick={() => {
-                            if (pitcher) handleSelectPitcher(pitcher, session.id);
-                          }}
-                          className="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition shadow-xs cursor-pointer active:scale-95"
-                        >
-                          Switch to Pitcher
-                        </button>
-                      ) : (
-                        <>
-                          {onReopenSession && (
-                            <button
-                              type="button"
-                              id={`reopen-session-${session.id}`}
-                              onClick={() => {
-                                if (pitcher) handleSelectPitcher(pitcher, session.id);
-                              }}
-                              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
-                              title="Reopen ended session"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-                              <span>Reopen</span>
-                            </button>
-                          )}
-
-                          {onDeleteSession && (
-                            <button
-                              type="button"
-                              id={`delete-session-${session.id}`}
-                              onClick={() => setSessionToDelete(session)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                              title="Delete session"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </>
-                      )}
+                  {/* Inline PitcherNotesEditor when editing */}
+                  {editingNoteSessionId === session.id && onSaveNotes && currentCoach && (
+                    <div className="w-full mt-2">
+                      <PitcherNotesEditor
+                        sessionId={session.id}
+                        coachId={currentCoach.id}
+                        initialNote={session.coachNotes?.[currentCoach.id] || ''}
+                        onSaveNotes={(sId, cId, n) => {
+                          onSaveNotes(sId, cId, n);
+                          setEditingNoteSessionId(null);
+                        }}
+                      />
                     </div>
-                  </div>
+                  )}
+
+                  {sessionCoachNotes.length === 0 &&
+                    onSaveNotes &&
+                    currentCoach &&
+                    !isCurrentActive &&
+                    editingNoteSessionId !== session.id && (
+                      <div className="mt-1 flex items-center justify-start">
+                        <button
+                          type="button"
+                          onClick={() => setEditingNoteSessionId(session.id)}
+                          className="text-[11px] text-slate-500 hover:text-emerald-700 flex items-center gap-1 font-medium transition cursor-pointer"
+                        >
+                          <FileText className="w-3 h-3 text-slate-400" />
+                          <span>+ Add coaching note for this session</span>
+                        </button>
+                      </div>
+                    )}
                 </div>
               );
             })}

@@ -86,7 +86,8 @@ export function updateSessionNotes(sessionId: string, coachId: string, notes: st
     if (!session.coachNotes) {
       session.coachNotes = {};
     }
-    session.coachNotes[coachId] = notes;
+    const targetCoachId = coachId || 'coach';
+    session.coachNotes[targetCoachId] = notes;
     session.updatedAt = new Date().toISOString();
     saveData(data);
     syncTeamBySessionId(sessionId, data);

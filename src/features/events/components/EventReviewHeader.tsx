@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, MapPin, ArrowLeft, Trash2 } from 'lucide-react';
+import { Calendar, MapPin, ArrowLeft, Trash2, FileText } from 'lucide-react';
 import { BaseballEvent, Team } from '../../../types';
 import { calculateGamePitchingMetrics } from '../../../storage';
 
@@ -16,6 +16,7 @@ export interface EventReviewHeaderProps {
   eventMetrics?: ReturnType<typeof calculateGamePitchingMetrics>;
   onBackToEvents?: () => void;
   onOpenDeleteModal?: () => void;
+  onExportPdf?: () => void;
 }
 
 export const EventReviewHeader: React.FC<EventReviewHeaderProps> = (props) => {
@@ -30,6 +31,7 @@ export const EventReviewHeader: React.FC<EventReviewHeaderProps> = (props) => {
     pitcherStatsCount,
     onBackToEvents,
     onOpenDeleteModal,
+    onExportPdf,
   } = props;
 
   const eventType = event?.type ?? 'game';
@@ -71,17 +73,31 @@ export const EventReviewHeader: React.FC<EventReviewHeaderProps> = (props) => {
           </button>
         )}
 
-        {onOpenDeleteModal && (
-          <button
-            type="button"
-            id="open-delete-event-modal-btn"
-            onClick={onOpenDeleteModal}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition cursor-pointer ml-auto"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Delete Event</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2 ml-auto">
+          {onExportPdf && (
+            <button
+              type="button"
+              id="open-export-pdf-modal-btn"
+              onClick={onExportPdf}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition cursor-pointer active:scale-95"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Export PDF</span>
+            </button>
+          )}
+
+          {onOpenDeleteModal && (
+            <button
+              type="button"
+              id="open-delete-event-modal-btn"
+              onClick={onOpenDeleteModal}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-lg text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Event</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

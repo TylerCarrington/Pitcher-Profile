@@ -2,9 +2,10 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BaseballEvent, Player, Pitch, Team, PitcherSession } from '../../../types';
 import { calculateGamePitchingMetrics, getCanonicalTeamSlugForTeam } from '../../../storage';
-import { Trash2, Trophy } from 'lucide-react';
+import { Trash2, Trophy, FileText } from 'lucide-react';
 import { EventReviewHeader } from './EventReviewHeader';
 import { PitcherReviewCard } from './PitcherReviewCard';
+import { EventSessionPdfExportModal } from './EventSessionPdfExportModal';
 import { aggregateEventPitcherStats } from '../utils/eventStatsUtils';
 import { useEvent } from '../hooks/useEvent';
 import { useTeam } from '../../teams/hooks/useTeam';
@@ -61,6 +62,7 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = (props) => 
 
   const [expandedPitcherId, setExpandedPitcherId] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showPdfExportModal, setShowPdfExportModal] = useState(false);
   const currentCoach = authCtx.currentCoach;
   const allCoaches = authCtx.allCoaches;
 
@@ -97,16 +99,30 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = (props) => 
         pitcherStatsCount={pitcherStats.length}
         onBackToEvents={onBackToEvents}
         onOpenDeleteModal={() => setShowDeleteModal(true)}
+        onExportPdf={pitcherStats.length > 0 ? () => setShowPdfExportModal(true) : undefined}
       />
 
       {/* Pitcher Performance & Breakdowns Card */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between">
+        <div className="px-5 py-4 bg-slate-50/80 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Trophy className="w-4 h-4 text-amber-500" />
             <h3 className="font-bold text-sm text-slate-800">Pitcher Performance &amp; Breakdowns</h3>
           </div>
-          <span className="text-xs text-slate-500 font-medium">USA Baseball Pitch Smart &bull; Arsenal Analysis</span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-slate-500 font-medium hidden sm:inline">USA Baseball Pitch Smart &bull; Arsenal Analysis</span>
+            {pitcherStats.length > 0 && (
+              <button
+                type="button"
+                id="card-header-export-pdf-btn"
+                onClick={() => setShowPdfExportModal(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg bg-slate-900 hover:bg-slate-800 text-white transition shadow-3xs cursor-pointer active:scale-95"
+              >
+                <FileText className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Export PDF Report</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {pitcherStats.length === 0 ? (
@@ -178,6 +194,18 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = (props) => 
             </div>
           </div>
         </div>
+      )}
+      {/* PDF Export Modal */}
+      {showPdfExportModal && (
+        <EventSessionPdfExportModal
+          event={event}
+          team={team}
+          pitcherStats={pitcherStats}
+          allEventSessions={allEventSessions}
+          allCoaches={allCoaches}
+          currentCoach={currentCoach}
+          onClose={() => setShowPdfExportModal(false)}
+        />
       )}
     </div>
   );

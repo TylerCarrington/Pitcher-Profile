@@ -133,8 +133,18 @@ export const SinglePlayerSessionExportModal: React.FC<SinglePlayerSessionExportM
         {/* Modal Header */}
         <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
-              <FileImage className="w-5 h-5" />
+            <div className="relative shrink-0">
+              {pitcher.imageUrl ? (
+                <img
+                  src={pitcher.imageUrl}
+                  alt={pitcher.name}
+                  className="w-10 h-10 rounded-full object-cover border border-slate-200 shadow-xs"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs font-bold text-xs">
+                  #{pitcher.jerseyNumber}
+                </div>
+              )}
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -142,6 +152,11 @@ export const SinglePlayerSessionExportModal: React.FC<SinglePlayerSessionExportM
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
                   {pitcher.name} (#{pitcher.jerseyNumber})
                 </span>
+                {team?.name && (
+                  <span className="text-xs text-slate-400 font-normal hidden sm:inline">
+                    &bull; {team.name}
+                  </span>
+                )}
               </h3>
               <p className="text-xs text-slate-500">
                 Strike Zone, Key Metrics &amp; Arsenal Breakdown in a single high-resolution image

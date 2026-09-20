@@ -1,4 +1,4 @@
-import React, { useMemo, forwardRef } from 'react';
+import React, { useMemo, useState, forwardRef } from 'react';
 import { Player, Pitch, PitcherSession, BaseballEvent, Team } from '../../../types';
 import { PITCH_TYPES_CONFIG, calculatePitchSmartStatus } from '../../../utils/pitchSmart';
 import { calculateGamePitchingMetrics } from '../../../storage';
@@ -55,6 +55,9 @@ export const SinglePlayerSessionExportCard = forwardRef<
   includeNotes = true,
   outcomeFilter = 'all',
 }, ref) => {
+  const [playerImgError, setPlayerImgError] = useState(false);
+  const [teamImgError, setTeamImgError] = useState(false);
+
   const uncountedPitches = session?.uncountedPitches ?? 0;
   const effectiveTotal = customTotal ?? (pitchesThrown + uncountedPitches);
   const effectiveStrikePercent =
@@ -188,8 +191,8 @@ export const SinglePlayerSessionExportCard = forwardRef<
   const restDays = pitchSmartStatus.restDaysRequired;
   const maxDailyPitches = pitchSmartStatus.dailyMax;
 
-  // SVG Size for the export card
-  const svgSize = 340;
+  // SVG Size for the export card (fits comfortably in 2-column grid without expanding bounds)
+  const svgSize = 300;
   const toSvgX = (normX: number) => ((normX + 1) / 2) * svgSize;
   const toSvgY = (normY: number) => ((normY + 1) / 2) * svgSize;
 
@@ -224,28 +227,40 @@ export const SinglePlayerSessionExportCard = forwardRef<
     <div
       ref={ref}
       id={`session-review-export-${pitcher.id}`}
-      className="bg-white text-slate-900 w-[780px] p-8 rounded-2xl border border-slate-200 shadow-xl space-y-6 select-none font-sans"
+      className="bg-white text-slate-900 w-[780px] max-w-[780px] p-8 rounded-2xl border border-slate-200 space-y-6 select-none font-sans shrink-0"
       style={{
         boxSizing: 'border-box',
+        width: '780px',
+        maxWidth: '780px',
         WebkitFontSmoothing: 'antialiased',
       }}
     >
       {/* 1. Header Banner */}
       <div className="flex items-center justify-between border-b border-slate-200 pb-5">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black text-xl shadow-md shadow-emerald-700/20">
-            ⚾
-          </div>
+        <div className="flex items-center gap-3.5">
+          {team?.imageUrl && !teamImgError ? (
+            <img
+              src={team.imageUrl}
+              alt={team.name}
+              crossOrigin="anonymous"
+              onError={() => setTeamImgError(true)}
+              className="w-13 h-13 rounded-2xl object-cover border border-slate-200 shadow-sm shrink-0 bg-white"
+            />
+          ) : (
+            <div className="w-13 h-13 rounded-2xl bg-gradient-to-br from-emerald-600 to-emerald-700 text-white flex items-center justify-center font-black text-xl shadow-md shadow-emerald-700/20 shrink-0">
+              {team?.name ? team.name.substring(0, 2).toUpperCase() : '⚾'}
+            </div>
+          )}
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-black tracking-tight text-slate-900">
+              <h2 className="text-xl font-black tracking-tight text-slate-900 whitespace-nowrap">
                 {team?.name || 'Baseball Team'}
               </h2>
-              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wide">
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wide whitespace-nowrap shrink-0 inline-flex items-center">
                 Scouting Review
               </span>
             </div>
-            <p className="text-xs text-slate-500 font-medium flex items-center gap-2 mt-0.5">
+            <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5 mt-0.5 whitespace-nowrap">
               <span>{isGame ? `Game vs ${event?.opponent || 'Opponent'}` : 'Bullpen Practice Session'}</span>
               <span>&bull;</span>
               <span>{eventDateStr}</span>
@@ -253,18 +268,18 @@ export const SinglePlayerSessionExportCard = forwardRef<
           </div>
         </div>
 
-        <div className="text-right">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+        <div className="text-right shrink-0 whitespace-nowrap">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">
             USA Baseball Pitch Smart
           </div>
-          <div className="text-xs font-extrabold text-slate-700 mt-0.5">
+          <div className="text-xs font-extrabold text-slate-700 mt-0.5 whitespace-nowrap">
             {restDays === 0 ? (
               <span className="text-emerald-600 font-bold">✓ 0 Days Rest Required</span>
             ) : (
               <span className="text-amber-600 font-bold">⚠ {restDays} {restDays === 1 ? 'Day' : 'Days'} Rest Required</span>
             )}
           </div>
-          <div className="text-[10px] text-slate-400 font-mono">
+          <div className="text-[10px] text-slate-400 font-mono whitespace-nowrap">
             Limit: {maxDailyPitches} pitches/day
           </div>
         </div>
@@ -274,8 +289,23 @@ export const SinglePlayerSessionExportCard = forwardRef<
       <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 flex items-center justify-between gap-4">
         {/* Pitcher Info */}
         <div className="flex items-center gap-3.5">
-          <div className="w-14 h-14 rounded-full bg-slate-900 text-white flex items-center justify-center font-black text-xl shadow-sm border-2 border-white">
-            #{pitcher.jerseyNumber}
+          <div className="relative shrink-0">
+            {pitcher.imageUrl && !playerImgError ? (
+              <img
+                src={pitcher.imageUrl}
+                alt={pitcher.name}
+                crossOrigin="anonymous"
+                onError={() => setPlayerImgError(true)}
+                className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-md ring-2 ring-slate-200"
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-full bg-slate-900 text-white flex items-center justify-center font-black text-xl shadow-sm border-2 border-white">
+                #{pitcher.jerseyNumber}
+              </div>
+            )}
+            <span className="absolute -bottom-1 -right-1 bg-slate-900 text-white font-black text-[10px] px-1.5 py-0.5 rounded-full border-2 border-white shadow-xs">
+              #{pitcher.jerseyNumber}
+            </span>
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -303,35 +333,35 @@ export const SinglePlayerSessionExportCard = forwardRef<
         </div>
 
         {/* Count Pill Summary */}
-        <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-3xs text-xs">
-          <div className="text-center px-1">
-            <div className="text-[9px] uppercase font-bold text-slate-400">Total</div>
-            <div className="font-mono font-black text-base text-slate-900">{effectiveTotal}</div>
+        <div className="flex items-center gap-2.5 sm:gap-3 bg-white px-3.5 py-2 rounded-xl border border-slate-200 shadow-3xs text-xs shrink-0 whitespace-nowrap">
+          <div className="text-center px-1 shrink-0">
+            <div className="text-[9px] uppercase font-bold text-slate-400 whitespace-nowrap">Total</div>
+            <div className="font-mono font-black text-base text-slate-900 whitespace-nowrap">{effectiveTotal}</div>
           </div>
-          <div className="h-6 w-px bg-slate-200" />
-          <div className="text-center px-1">
-            <div className="text-[9px] uppercase font-bold text-emerald-600">Strikes</div>
-            <div className="font-mono font-black text-base text-emerald-600">{strikes}</div>
+          <div className="h-6 w-px bg-slate-200 shrink-0" />
+          <div className="text-center px-1 shrink-0">
+            <div className="text-[9px] uppercase font-bold text-emerald-600 whitespace-nowrap">Strikes</div>
+            <div className="font-mono font-black text-base text-emerald-600 whitespace-nowrap">{strikes}</div>
           </div>
-          <div className="h-6 w-px bg-slate-200" />
-          <div className="text-center px-1">
-            <div className="text-[9px] uppercase font-bold text-amber-600">Balls</div>
-            <div className="font-mono font-black text-base text-amber-600">{balls}</div>
+          <div className="h-6 w-px bg-slate-200 shrink-0" />
+          <div className="text-center px-1 shrink-0">
+            <div className="text-[9px] uppercase font-bold text-amber-600 whitespace-nowrap">Balls</div>
+            <div className="font-mono font-black text-base text-amber-600 whitespace-nowrap">{balls}</div>
           </div>
           {isGame && (
             <>
-              <div className="h-6 w-px bg-slate-200" />
-              <div className="text-center px-1">
-                <div className="text-[9px] uppercase font-bold text-cyan-600">IP</div>
-                <div className="font-mono font-black text-base text-cyan-700">
+              <div className="h-6 w-px bg-slate-200 shrink-0" />
+              <div className="text-center px-1 shrink-0">
+                <div className="text-[9px] uppercase font-bold text-cyan-600 whitespace-nowrap">IP</div>
+                <div className="font-mono font-black text-base text-cyan-700 whitespace-nowrap">
                   {effectiveGameMetrics.inningsPitched}
                 </div>
               </div>
-              <div className="h-6 w-px bg-slate-200" />
-              <div className="text-center px-1">
-                <div className="text-[9px] uppercase font-bold text-slate-500">K / BB</div>
-                <div className="font-mono font-black text-base text-slate-800">
-                  {effectiveGameMetrics.strikeouts}-{effectiveGameMetrics.walks}
+              <div className="h-6 w-px bg-slate-200 shrink-0" />
+              <div className="text-center px-1 shrink-0">
+                <div className="text-[9px] uppercase font-bold text-slate-500 whitespace-nowrap">K / BB</div>
+                <div className="font-mono font-black text-base text-slate-800 whitespace-nowrap">
+                  {effectiveGameMetrics.strikeouts}&ndash;{effectiveGameMetrics.walks}
                 </div>
               </div>
             </>
@@ -399,59 +429,39 @@ export const SinglePlayerSessionExportCard = forwardRef<
           </div>
 
           <div
-            className="relative rounded-xl border border-slate-300 bg-slate-950 shadow-inner overflow-hidden"
+            className="relative rounded-2xl border border-slate-300 bg-slate-950 shadow-inner overflow-hidden"
             style={{ width: svgSize, height: svgSize }}
           >
             <svg
               viewBox={`0 0 ${svgSize} ${svgSize}`}
-              className="w-full h-full"
+              className="w-full h-full select-none"
             >
-              {/* Batter Silhouette Background Accent */}
-              <text
-                x={svgSize * 0.08}
-                y={svgSize * 0.5}
-                fill="#334155"
-                fontSize="11"
-                fontWeight="bold"
-                textAnchor="middle"
-              >
-                RHB
-              </text>
-              <text
-                x={svgSize * 0.92}
-                y={svgSize * 0.5}
-                fill="#334155"
-                fontSize="11"
-                fontWeight="bold"
-                textAnchor="middle"
-              >
-                LHB
-              </text>
+              {/* Background Grid */}
+              <rect width={svgSize} height={svgSize} fill="#090d16" />
 
-              {/* Far Ball Zone Boundary */}
+              {/* Far Miss Zone */}
               <rect
                 x={farLeft}
                 y={farTop}
                 width={farWidth}
                 height={farHeight}
-                fill="#0f172a"
-                stroke="#1e293b"
+                rx="14"
+                fill="rgba(30, 41, 59, 0.45)"
+                stroke="#334155"
                 strokeWidth="1.5"
-                rx="6"
+                strokeDasharray="4 4"
               />
 
-              {/* Near Chase Zone Boundary */}
+              {/* Near Miss Zone */}
               <rect
                 x={nearLeft}
                 y={nearTop}
                 width={nearWidth}
                 height={nearHeight}
-                fill="#1e293b"
-                fillOpacity="0.4"
-                stroke="#334155"
+                rx="10"
+                fill="rgba(51, 65, 85, 0.5)"
+                stroke="#64748b"
                 strokeWidth="1.5"
-                strokeDasharray="4 3"
-                rx="4"
               />
 
               {/* 3x3 Strike Zone Cells Heatmap Coloring */}
@@ -465,14 +475,6 @@ export const SinglePlayerSessionExportCard = forwardRef<
                 const count = cellCounts[idx];
                 const intensity = count / maxCellCount;
 
-                let cellColor = '#0f172a';
-                if (count > 0) {
-                  const r = Math.round(16 + intensity * 220);
-                  const g = Math.round(185 - intensity * 100);
-                  const b = Math.round(129 - intensity * 80);
-                  cellColor = `rgb(${r}, ${g}, ${b})`;
-                }
-
                 return (
                   <g key={`cell-${idx}`}>
                     <rect
@@ -480,19 +482,24 @@ export const SinglePlayerSessionExportCard = forwardRef<
                       y={y}
                       width={cellW}
                       height={cellH}
-                      fill={cellColor}
-                      fillOpacity={count > 0 ? 0.35 + intensity * 0.55 : 0.2}
-                      stroke="#475569"
-                      strokeWidth="1"
+                      fill={
+                        count > 0
+                          ? `rgba(16, 185, 129, ${0.08 + intensity * 0.45})`
+                          : 'rgba(16, 185, 129, 0.04)'
+                      }
+                      stroke="#10b981"
+                      strokeWidth="0.5"
                     />
                     {count > 0 && (
                       <text
                         x={x + cellW / 2}
-                        y={y + cellH / 2 + 4}
-                        fill="#ffffff"
+                        y={y + cellH / 2}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fill="#6ee7b7"
                         fontSize="11"
                         fontWeight="bold"
-                        textAnchor="middle"
+                        fontFamily="ui-monospace, SFMono-Regular, monospace"
                         opacity={0.85}
                       >
                         {count}
@@ -502,71 +509,103 @@ export const SinglePlayerSessionExportCard = forwardRef<
                 );
               })}
 
-              {/* 3x3 Strike Zone Core Solid Border */}
+              {/* 3x3 Strike Zone Core Border */}
               <rect
                 x={strikeLeft}
                 y={strikeTop}
                 width={strikeWidth}
                 height={strikeHeight}
                 fill="none"
-                stroke="#ffffff"
+                stroke="#10b981"
                 strokeWidth="2.5"
-                rx="2"
+                rx="4"
               />
 
-              {/* Home Plate at Bottom Center */}
-              <polygon
-                points={`
-                  ${svgSize / 2 - 24},${strikeBottom + 18}
-                  ${svgSize / 2 + 24},${strikeBottom + 18}
-                  ${svgSize / 2 + 24},${strikeBottom + 28}
-                  ${svgSize / 2},${strikeBottom + 38}
-                  ${svgSize / 2 - 24},${strikeBottom + 28}
-                `}
-                fill="#f8fafc"
-                stroke="#94a3b8"
-                strokeWidth="1.5"
-                opacity="0.8"
+              {/* Dividing Lines */}
+              <line
+                x1={strikeLeft + strikeWidth / 3}
+                y1={strikeTop}
+                x2={strikeLeft + strikeWidth / 3}
+                y2={strikeBottom}
+                stroke="#10b981"
+                strokeWidth="1"
+                strokeDasharray="3 3"
+                opacity="0.6"
+              />
+              <line
+                x1={strikeLeft + (strikeWidth * 2) / 3}
+                y1={strikeTop}
+                x2={strikeLeft + (strikeWidth * 2) / 3}
+                y2={strikeBottom}
+                stroke="#10b981"
+                strokeWidth="1"
+                strokeDasharray="3 3"
+                opacity="0.6"
+              />
+              <line
+                x1={strikeLeft}
+                y1={strikeTop + strikeHeight / 3}
+                x2={strikeRight}
+                y2={strikeTop + strikeHeight / 3}
+                stroke="#10b981"
+                strokeWidth="1"
+                strokeDasharray="3 3"
+                opacity="0.6"
+              />
+              <line
+                x1={strikeLeft}
+                y1={strikeTop + (strikeHeight * 2) / 3}
+                x2={strikeRight}
+                y2={strikeTop + (strikeHeight * 2) / 3}
+                stroke="#10b981"
+                strokeWidth="1"
+                strokeDasharray="3 3"
+                opacity="0.6"
               />
 
-              {/* Pitch Location Scatter Points */}
+              {/* Home Plate Outline (Bottom Perspective) */}
+              <g opacity="0.65" transform={`translate(${svgSize / 2 - 20}, ${svgSize - 20}) scale(0.7)`}>
+                <polygon
+                  points="0,0 56,0 56,18 28,34 0,18"
+                  fill="#e2e8f0"
+                  stroke="#94a3b8"
+                  strokeWidth="2"
+                />
+              </g>
+
+              {/* Plotted Pitch Dots (Balls) */}
               {pitchesWithLocation.map((p, index) => {
                 if (!p.location) return null;
                 const px = toSvgX(p.location.x);
                 const py = toSvgY(p.location.y);
-                const fill = getMarkerColor(p);
-                const isSwinging = p.outcome === 'strike' && p.strikeDetail === 'swinging';
+                const markerColor = getMarkerColor(p);
+                const pitchNum = p.pitchNumber ?? index + 1;
 
                 return (
-                  <g key={p.id || index}>
-                    {/* Glowing ring */}
+                  <g
+                    key={p.id || index}
+                    transform={`translate(${px}, ${py})`}
+                  >
+                    {/* Outer circle halo / ball matching breakdown */}
                     <circle
-                      cx={px}
-                      cy={py}
-                      r="7.5"
-                      fill={fill}
-                      fillOpacity="0.3"
-                    />
-                    {/* Main Dot */}
-                    <circle
-                      cx={px}
-                      cy={py}
-                      r="4.5"
-                      fill={fill}
+                      r="7"
+                      fill={markerColor}
                       stroke="#ffffff"
                       strokeWidth="1.5"
+                      opacity="0.95"
                     />
-                    {isSwinging && (
-                      <circle
-                        cx={px}
-                        cy={py}
-                        r="6.5"
-                        fill="none"
-                        stroke="#ffffff"
-                        strokeWidth="1"
-                        strokeDasharray="2 2"
-                      />
-                    )}
+                    {/* Pitch sequence number inside dot */}
+                    <text
+                      y="0.5"
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fill="#000000"
+                      fontSize="8"
+                      fontWeight="bold"
+                      fontFamily="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+                    >
+                      {pitchNum}
+                    </text>
                   </g>
                 );
               })}
@@ -574,31 +613,31 @@ export const SinglePlayerSessionExportCard = forwardRef<
           </div>
 
           {/* Outcome Color Legend */}
-          <div className="w-full flex flex-wrap items-center justify-between text-[10px] text-slate-600 mt-3 px-1 font-semibold">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-1 ring-white" />
-              <span>Called Strike</span>
+          <div className="w-full flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-[10.5px] text-slate-600 mt-3 px-1 font-semibold">
+            <div className="inline-flex items-center gap-1.5 whitespace-nowrap shrink-0">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-1 ring-white shrink-0" />
+              <span className="whitespace-nowrap">Called Strike</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 ring-1 ring-white" />
-              <span>Swinging</span>
+            <div className="inline-flex items-center gap-1.5 whitespace-nowrap shrink-0">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 ring-1 ring-white shrink-0" />
+              <span className="whitespace-nowrap">Swinging</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 ring-1 ring-white" />
-              <span>Ball</span>
+            <div className="inline-flex items-center gap-1.5 whitespace-nowrap shrink-0">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 ring-1 ring-white shrink-0" />
+              <span className="whitespace-nowrap">Ball</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-violet-500 ring-1 ring-white" />
-              <span>Foul</span>
+            <div className="inline-flex items-center gap-1.5 whitespace-nowrap shrink-0">
+              <span className="w-2.5 h-2.5 rounded-full bg-violet-500 ring-1 ring-white shrink-0" />
+              <span className="whitespace-nowrap">Foul</span>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-blue-500 ring-1 ring-white" />
-              <span>In Play</span>
+            <div className="inline-flex items-center gap-1.5 whitespace-nowrap shrink-0">
+              <span className="w-2.5 h-2.5 rounded-full bg-blue-500 ring-1 ring-white shrink-0" />
+              <span className="whitespace-nowrap">In Play</span>
             </div>
           </div>
 
           {pitchesWithoutLocation > 0 && (
-            <div className="text-[10px] text-slate-400 mt-1.5 text-center">
+            <div className="text-[10px] text-slate-400 mt-2 text-center whitespace-nowrap">
               ({pitchesWithoutLocation} quick-logged pitch{pitchesWithoutLocation > 1 ? 'es' : ''} without coordinates)
             </div>
           )}

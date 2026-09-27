@@ -3,6 +3,7 @@ import { Pitch, Player, PitcherSession, BaseballEvent, Coach } from '../../../ty
 import { getCurrentCoach } from '../../../storage';
 import { FileText } from 'lucide-react';
 import { filterVisibleCoachNotes } from '../utils/playerStatsUtils';
+import { CoachNotePhotoGallery } from '../../events/components/CoachNotePhotoGallery';
 
 export interface PlayerHistoryTabProps {
   player: Player;
@@ -111,7 +112,7 @@ export const PlayerHistoryTab: React.FC<PlayerHistoryTabProps> = ({
                     {visibleNotes.map((note) => (
                       <div
                         key={note.coachId}
-                        className={`text-xs p-2 rounded-lg border text-slate-700 space-y-0.5 ${
+                        className={`text-xs p-2.5 rounded-lg border text-slate-700 space-y-1.5 ${
                           note.isShared
                             ? 'bg-emerald-50/60 border-emerald-200/80'
                             : 'bg-amber-50/40 border-amber-200/60'
@@ -131,7 +132,16 @@ export const PlayerHistoryTab: React.FC<PlayerHistoryTabProps> = ({
                             {note.isShared ? 'Shared' : 'Private'}
                           </span>
                         </div>
-                        <p className="text-slate-700 font-normal leading-relaxed">{note.noteText}</p>
+                        {note.noteText && (
+                          <p className="text-slate-700 font-normal leading-relaxed">{note.noteText}</p>
+                        )}
+                        {note.photos && note.photos.length > 0 && (
+                          <CoachNotePhotoGallery
+                            photos={note.photos}
+                            isEditing={false}
+                            authorName={note.authorName}
+                          />
+                        )}
                       </div>
                     ))}
                   </div>

@@ -141,6 +141,9 @@ function runHeaderNavigationTests() {
 
   if (passed === total) {
     console.log('🎉 ALL HEADER NAVIGATION & BRAND ICON TESTS PASSED SUCCESSFULLY!');
+    process.exit(0);
+  } else {
+    process.exit(1);
   }
 }
 

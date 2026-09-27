@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BaseballEvent, Player, Pitch, Team, PitcherSession } from '../../../types';
-import { calculateGamePitchingMetrics, getCanonicalTeamSlugForTeam } from '../../../storage';
+import { calculateGamePitchingMetrics, getCanonicalTeamSlugForTeam, getTeamById } from '../../../storage';
+import { getPitchRulePreset } from '../../../utils/pitchSmart';
 import { Trash2, Trophy, FileText } from 'lucide-react';
 import { EventReviewHeader } from './EventReviewHeader';
 import { PitcherReviewCard } from './PitcherReviewCard';
@@ -30,7 +31,10 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = (props) => 
   const navigate = useNavigate();
 
   const event = props.event !== undefined ? props.event : eventCtx.selectedEvent;
-  const team = props.team !== undefined ? props.team : teamCtx.selectedTeam;
+  const team =
+    (props.team !== undefined ? props.team : null) ||
+    (event?.teamId ? teamCtx.teams.find((t) => t.id === event.teamId) || getTeamById(event.teamId) : null) ||
+    teamCtx.selectedTeam;
   const players = props.players ?? teamCtx.teamPlayers;
   const allEventPitches = props.allEventPitches ?? eventCtx.allEventPitches;
   const allEventSessions = props.allEventSessions ?? eventCtx.allEventSessions;
@@ -110,7 +114,9 @@ export const EventReviewSummary: React.FC<EventReviewSummaryProps> = (props) => 
             <h3 className="font-bold text-sm text-slate-800">Pitcher Performance &amp; Breakdowns</h3>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-slate-500 font-medium hidden sm:inline">USA Baseball Pitch Smart &bull; Arsenal Analysis</span>
+            <span className="text-xs text-slate-500 font-medium hidden sm:inline">
+              {getPitchRulePreset(team?.pitchRulePresetId).shortName} &bull; Arsenal Analysis
+            </span>
             {pitcherStats.length > 0 && (
               <button
                 type="button"

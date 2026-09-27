@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Coach, PitcherSession } from '../../../types';
-import { Lock, Unlock, CheckCircle2, FileText, Users } from 'lucide-react';
+import { Lock, Unlock, CheckCircle2, FileText, Users, Camera } from 'lucide-react';
+import {
+  CoachNotePhoto,
+  parseCoachNote,
+  serializeCoachNote,
+  createCoachNotePhotoFromFile,
+} from '../../events/utils/coachNotesUtils';
+import { CoachNotePhotoGallery } from '../../events/components/CoachNotePhotoGallery';
 
 interface SessionNotesProps {
   sessionId?: string;
@@ -23,35 +30,47 @@ export const SessionNotes: React.FC<SessionNotesProps> = (props) => {
 
   const onSaveNotes = props.onSaveNotes;
 
-  const isInitiallyShared = initialNotes ? initialNotes.startsWith('[SHARED]') : false;
-  const cleanInitialText = initialNotes ? initialNotes.replace(/^\[SHARED\]\s*/, '') : '';
+  const parsedInitial = parseCoachNote(initialNotes);
 
-  const [notes, setNotes] = useState(cleanInitialText);
-  const [isShared, setIsShared] = useState(isInitiallyShared);
+  const [notes, setNotes] = useState(parsedInitial.text);
+  const [isShared, setIsShared] = useState(parsedInitial.isShared);
+  const [photos, setPhotos] = useState<CoachNotePhoto[]>(parsedInitial.photos);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [showPhotoUploader, setShowPhotoUploader] = useState(parsedInitial.photos.length > 0);
+
   const timerRef = useRef<number | null>(null);
-  const notesRef = useRef(cleanInitialText);
-  const isSharedRef = useRef(isInitiallyShared);
+  const notesRef = useRef(parsedInitial.text);
+  const isSharedRef = useRef(parsedInitial.isShared);
+  const photosRef = useRef<CoachNotePhoto[]>(parsedInitial.photos);
   const isDirtyRef = useRef(false);
 
   notesRef.current = notes;
   isSharedRef.current = isShared;
+  photosRef.current = photos;
 
   // Sync when initialNotes changes from external switch or session change
   useEffect(() => {
-    const shared = initialNotes ? initialNotes.startsWith('[SHARED]') : false;
-    const text = initialNotes ? initialNotes.replace(/^\[SHARED\]\s*/, '') : '';
-    setNotes(text);
-    notesRef.current = text;
-    setIsShared(shared);
-    isSharedRef.current = shared;
+    const updated = parseCoachNote(initialNotes);
+    setNotes(updated.text);
+    notesRef.current = updated.text;
+    setIsShared(updated.isShared);
+    isSharedRef.current = updated.isShared;
+    setPhotos(updated.photos);
+    photosRef.current = updated.photos;
+    if (updated.photos.length > 0) {
+      setShowPhotoUploader(true);
+    }
     setSaveStatus('saved');
     isDirtyRef.current = false;
   }, [sessionId, initialNotes]);
 
-  const executeSave = (text: string, shared: boolean) => {
+  const executeSave = (text: string, shared: boolean, currentPhotos: CoachNotePhoto[]) => {
     if (!onSaveNotes) return;
-    const formattedNote = shared ? `[SHARED] ${text}` : text;
+    const formattedNote = serializeCoachNote({
+      text,
+      isShared: shared,
+      photos: currentPhotos,
+    });
     if (onSaveNotes.length >= 3) {
       (onSaveNotes as (sid: string, cid: string, n: string) => void)(sessionId, coachId, formattedNote);
     } else {
@@ -69,12 +88,12 @@ export const SessionNotes: React.FC<SessionNotesProps> = (props) => {
           window.clearTimeout(timerRef.current);
           timerRef.current = null;
         }
-        executeSave(notesRef.current, isSharedRef.current);
+        executeSave(notesRef.current, isSharedRef.current, photosRef.current);
       }
     };
   }, [sessionId, coachId]);
 
-  const triggerSave = (text: string, shared: boolean) => {
+  const triggerSave = (text: string, shared: boolean, currentPhotos: CoachNotePhoto[]) => {
     setSaveStatus('saving');
     isDirtyRef.current = true;
 
@@ -83,7 +102,7 @@ export const SessionNotes: React.FC<SessionNotesProps> = (props) => {
     }
 
     timerRef.current = window.setTimeout(() => {
-      executeSave(text, shared);
+      executeSave(text, shared, currentPhotos);
       timerRef.current = null;
     }, 500);
   };
@@ -91,7 +110,7 @@ export const SessionNotes: React.FC<SessionNotesProps> = (props) => {
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const text = e.target.value;
     setNotes(text);
-    triggerSave(text, isShared);
+    triggerSave(text, isShared, photos);
   };
 
   const handleBlur = () => {
@@ -100,7 +119,7 @@ export const SessionNotes: React.FC<SessionNotesProps> = (props) => {
         window.clearTimeout(timerRef.current);
         timerRef.current = null;
       }
-      executeSave(notesRef.current, isSharedRef.current);
+      executeSave(notesRef.current, isSharedRef.current, photosRef.current);
     }
   };
 
@@ -112,22 +131,69 @@ export const SessionNotes: React.FC<SessionNotesProps> = (props) => {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
-    executeSave(notes, nextShared);
+    executeSave(notes, nextShared, photos);
+  };
+
+  const handlePhotosChange = (newPhotos: CoachNotePhoto[]) => {
+    setPhotos(newPhotos);
+    photosRef.current = newPhotos;
+    executeSave(notes, isShared, newPhotos);
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          try {
+            const newPhoto = await createCoachNotePhotoFromFile(file, 'Live session photo');
+            const updated = [...photos, newPhoto];
+            setShowPhotoUploader(true);
+            handlePhotosChange(updated);
+          } catch (err) {
+            console.error('Failed to paste photo:', err);
+          }
+        }
+      }
+    }
   };
 
   const coachDisplayName = currentCoach?.name || 'Coach';
 
   return (
-    <div id="session-notes-box" className="w-full bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-2.5">
+    <div
+      id="session-notes-box"
+      className="w-full bg-white rounded-xl border border-slate-200 shadow-sm p-4 space-y-2.5"
+      onPaste={handlePaste}
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <FileText className="w-4 h-4 text-emerald-600" />
           <h4 className="font-bold text-xs uppercase tracking-wider text-slate-700">
-            Coaching Notes
+            Coaching Notes &amp; Reference Photos
           </h4>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Photos toggle button */}
+          <button
+            type="button"
+            onClick={() => setShowPhotoUploader((v) => !v)}
+            className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-lg border transition cursor-pointer ${
+              showPhotoUploader || photos.length > 0
+                ? 'bg-slate-100 text-slate-800 border-slate-300'
+                : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200'
+            }`}
+            title="Attach or manage reference photos"
+          >
+            <Camera className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Photos {photos.length > 0 ? `(${photos.length})` : ''}</span>
+          </button>
+
           {/* Interactive Clickable Privacy Badge */}
           <button
             type="button"
@@ -178,12 +244,24 @@ export const SessionNotes: React.FC<SessionNotesProps> = (props) => {
         onBlur={handleBlur}
         placeholder={
           isShared
-            ? 'Type coaching observations visible to all team coaches...'
+            ? 'Type coaching observations visible to all team coaches (paste or attach reference photos)...'
             : `Type private scouting observations, mechanics notes, velocity feedback, or cues for ${coachDisplayName}...`
         }
         rows={3}
         className="w-full text-xs sm:text-sm p-3 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-500 text-slate-800 placeholder:text-slate-400 resize-none transition"
       />
+
+      {/* Reference photos gallery */}
+      {(showPhotoUploader || photos.length > 0) && (
+        <div className="pt-1 border-t border-slate-100">
+          <CoachNotePhotoGallery
+            photos={photos}
+            isEditing={true}
+            onPhotosChange={handlePhotosChange}
+            authorName={coachDisplayName}
+          />
+        </div>
+      )}
 
       <div className="flex items-center justify-between text-[11px] text-slate-400 px-0.5">
         <span className="flex items-center gap-1">

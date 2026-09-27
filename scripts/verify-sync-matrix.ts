@@ -292,6 +292,7 @@ console.log('====================================================');
 
 if (passedTests === totalTests) {
   console.log('🎉 ALL MULTI-DEVICE VERIFICATION TESTS PASSED SUCCESSFULLY!');
+  process.exit(0);
 } else {
   console.error('❌ SOME TESTS FAILED');
   process.exit(1);

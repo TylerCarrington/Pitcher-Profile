@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Player, Pitch, PitcherSession, BaseballEvent, Team } from '../../../types';
+import { Player, Pitch, PitcherSession, BaseballEvent, Team, CoachNotePhoto } from '../../../types';
 import { calculateGamePitchingMetrics } from '../../../storage';
 import { SinglePlayerSessionExportCard } from './SinglePlayerSessionExportCard';
 import { downloadElementAsPng, copyElementToClipboard } from '../utils/exportSessionImage';
@@ -28,7 +28,7 @@ export interface SinglePlayerSessionExportModalProps {
   totalPitches?: number;
   strikePercent?: number;
   gameMetrics?: ReturnType<typeof calculateGamePitchingMetrics>;
-  coachNotes?: { authorName: string; noteText: string }[];
+  coachNotes?: { authorName: string; noteText: string; photos?: CoachNotePhoto[] }[];
   onClose: () => void;
 }
 

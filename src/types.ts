@@ -155,6 +155,13 @@ export interface Pitch {
   recordedBy: string; // coachId
 }
 
+export interface CoachNotePhoto {
+  id: string;
+  dataUrl: string;
+  caption?: string;
+  timestamp?: string;
+}
+
 export interface PitcherSession {
   id: string;
   eventId: string;
@@ -165,7 +172,7 @@ export interface PitcherSession {
   updatedAt?: string;
   deletedAt?: string;
   isDeleted?: boolean;
-  // Notes are private per coach: coachId -> private note string
+  // Notes are private per coach: coachId -> private note string (plain text or serialized JSON with photos)
   coachNotes: Record<string, string>;
   warningFlags?: SafetyWarningFlag[]; // Phase 3 flagged warnings
   uncountedPitches?: number;

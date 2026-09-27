@@ -177,6 +177,8 @@ export const PitcherProfileModal: React.FC<PitcherProfileModalProps> = ({
               <PitchSmartBadge
                 pitchCount={pitchSmart.pitchCount}
                 seasonAge={seasonAge}
+                presetId={team.pitchRulePresetId}
+                playerName={player.name}
                 showDetails
               />
               <span className="text-[11px] text-slate-400">

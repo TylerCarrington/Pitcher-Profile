@@ -13,11 +13,13 @@ import {
   Sparkles,
   Users,
 } from 'lucide-react';
-import { BaseballEvent, Coach, PitcherSession, Team } from '../../../types';
+import { BaseballEvent, Coach, PitcherSession, Team, CoachNotePhoto } from '../../../types';
 import { calculateGamePitchingMetrics } from '../../../storage';
+import { getPitchRulePreset } from '../../../utils/pitchSmart';
 import { PitcherEventStat } from '../utils/eventStatsUtils';
 import { SinglePlayerSessionExportCard } from './SinglePlayerSessionExportCard';
 import { generateMultiPagePdfFromElements } from '../utils/exportSessionPdf';
+import { parseCoachNote } from '../utils/coachNotesUtils';
 
 export interface EventSessionPdfExportModalProps {
   event: BaseballEvent;
@@ -73,19 +75,19 @@ export const EventSessionPdfExportModal: React.FC<EventSessionPdfExportModalProp
 
   // Helper to extract coach notes for a specific pitcher across event sessions
   const getPitcherNotes = (pitcherId: string) => {
-    const list: { authorName: string; noteText: string }[] = [];
+    const list: { authorName: string; noteText: string; photos?: CoachNotePhoto[] }[] = [];
     const sessions = allEventSessions.filter((s) => s.pitcherId === pitcherId);
 
     sessions.forEach((s) => {
       Object.entries(s?.coachNotes || {}).forEach(([coachId, note]) => {
         if (typeof note === 'string' && note.trim().length > 0) {
+          const parsed = parseCoachNote(note);
           const author = allCoaches.find((c) => c.id === coachId);
-          const cleanText = note.replace(/^\[SHARED\]\s*/, '').trim();
-          if (cleanText) {
+          if (parsed.text || parsed.photos.length > 0) {
             const authorName =
               author?.name || (coachId === currentCoach?.id ? currentCoach?.name || 'You' : 'Coach');
-            if (!list.some((item) => item.authorName === authorName && item.noteText === cleanText)) {
-              list.push({ authorName, noteText: cleanText });
+            if (!list.some((item) => item.authorName === authorName && item.noteText === parsed.text)) {
+              list.push({ authorName, noteText: parsed.text, photos: parsed.photos });
             }
           }
         }
@@ -448,7 +450,7 @@ export const EventSessionPdfExportModal: React.FC<EventSessionPdfExportModalProp
             <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
             <span>Each pitcher is printed on their own clean page in the resulting PDF.</span>
           </div>
-          <span>USA Baseball Pitch Smart Compliant</span>
+          <span>{getPitchRulePreset(team?.pitchRulePresetId).shortName} Compliant</span>
         </div>
       </div>
 

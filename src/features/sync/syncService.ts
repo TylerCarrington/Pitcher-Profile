@@ -20,6 +20,44 @@ export function getCoachDocId(coach?: Coach | null): string | null {
   return current.googleId || current.id || null;
 }
 
+const syncedInviteCodes = new Set<string>();
+const teamSyncTimers = new Map<string, any>();
+const teamSyncInFlight = new Set<string>();
+const teamSyncPending = new Set<string>();
+
+export function queueTeamSync(teamId: string, delayMs = 400): Promise<void> {
+  return new Promise((resolve) => {
+    if (teamSyncTimers.has(teamId)) {
+      clearTimeout(teamSyncTimers.get(teamId));
+    }
+    const timer = setTimeout(async () => {
+      teamSyncTimers.delete(teamId);
+      if (teamSyncInFlight.has(teamId)) {
+        teamSyncPending.add(teamId);
+        resolve();
+        return;
+      }
+      teamSyncInFlight.add(teamId);
+      try {
+        const data = loadData();
+        const team = data.teams.find((t) => t.id === teamId);
+        if (team) {
+          await syncSingleTeamToCloud(team, data);
+        }
+      } catch (err) {
+        console.warn(`Notice in queueTeamSync for team ${teamId}:`, err);
+      } finally {
+        teamSyncInFlight.delete(teamId);
+        if (teamSyncPending.has(teamId)) {
+          teamSyncPending.delete(teamId);
+          queueTeamSync(teamId, 200);
+        }
+        resolve();
+      }
+    }, delayMs);
+    teamSyncTimers.set(teamId, timer);
+  });
+}
 
 export async function syncSingleTeamToCloud(team: Team, dataOverride?: AppData): Promise<void> {
   if (!team || !team.id) return;
@@ -105,10 +143,23 @@ export async function syncSingleTeamToCloud(team: Team, dataOverride?: AppData):
 
     const sanitizedPayload = cleanForFirestore(payload);
     await setDoc(doc(db, 'teams', team.id), sanitizedPayload, { merge: true });
-    if (cleanCode) {
-      await setDoc(doc(db, 'invite_codes', cleanCode), sanitizedPayload, { merge: true });
+
+    // Lightweight invite code registry: only write once to prevent write amplification
+    if (cleanCode && !syncedInviteCodes.has(cleanCode)) {
+      syncedInviteCodes.add(cleanCode);
+      const invitePayload = cleanForFirestore({
+        id: team.id,
+        name: team.name,
+        imageUrl: team.imageUrl || null,
+        createdBy: team.createdBy,
+        createdAt: team.createdAt,
+        inviteCode: team.inviteCode,
+        memberCoachIds: team.memberCoachIds || [],
+        lastUpdated: new Date().toISOString(),
+      });
+      setDoc(doc(db, 'invite_codes', cleanCode), invitePayload, { merge: true }).catch(() => {});
       if (cleanCodeWithoutDash && cleanCodeWithoutDash !== cleanCode) {
-        await setDoc(doc(db, 'invite_codes', cleanCodeWithoutDash), sanitizedPayload, { merge: true });
+        setDoc(doc(db, 'invite_codes', cleanCodeWithoutDash), invitePayload, { merge: true }).catch(() => {});
       }
     }
   } catch (err) {
@@ -120,12 +171,7 @@ export function syncTeamByEventId(eventId: string, data?: AppData): Promise<void
   const currentData = data || loadData();
   const event = currentData.events.find((e) => e.id === eventId);
   if (event?.teamId) {
-    const team = currentData.teams.find((t) => t.id === event.teamId);
-    if (team) {
-      return syncSingleTeamToCloud(team, currentData).catch((err) =>
-        console.warn('Notice on instant team cloud sync by event:', err),
-      );
-    }
+    return queueTeamSync(event.teamId);
   }
   return Promise.resolve();
 }

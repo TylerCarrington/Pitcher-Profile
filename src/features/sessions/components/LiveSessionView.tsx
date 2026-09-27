@@ -20,6 +20,7 @@ import {
   getPitchesForPlayer,
   getCanonicalEventSlugForEvent,
   getCanonicalTeamSlugForTeam,
+  getTeamById,
 } from '../../../storage';
 import { calculateCumulativePitchTotals } from '../../../utils/pitchSmart';
 import { LivePitchHeader } from './LivePitchHeader';
@@ -99,7 +100,10 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
   const onSaveNotes = props.onSaveNotes ?? eventCtx.saveNotes;
   const onUpdateOuts = props.onUpdateOuts ?? eventCtx.updateOuts;
   const onEndInning = props.onEndInning ?? eventCtx.endInning;
-  const team = props.team !== undefined ? props.team : teamCtx.selectedTeam;
+  const team =
+    (props.team !== undefined ? props.team : null) ||
+    (event?.teamId ? teamCtx.teams.find((t) => t.id === event.teamId) || getTeamById(event.teamId) : null) ||
+    teamCtx.selectedTeam;
 
   const onBackToTeam = props.onBackToTeam ?? (() => {
     eventCtx.selectEvent(null);
@@ -251,6 +255,7 @@ export const LiveSessionView: React.FC<LiveSessionViewProps> = (props) => {
         <main className="max-w-5xl w-full mx-auto px-4 py-6 flex-1 space-y-6">
           <PitcherPicker
             event={event}
+            team={team}
             teamPlayers={teamPlayers}
             allEventSessions={allEventSessions}
             activePitcher={activePitcher}

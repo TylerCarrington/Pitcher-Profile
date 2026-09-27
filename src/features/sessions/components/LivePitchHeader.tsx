@@ -3,6 +3,7 @@ import { Player, BaseballEvent, PitcherSession, PitchRulePresetId, Pitch } from 
 import { PitchSmartBadge } from '../../players/components/PitchSmartBadge';
 import { calculatePitchSmartStatus, CumulativePitchTotals } from '../../../utils/pitchSmart';
 import { getPlayerById } from '../../players/playerService';
+import { getTeamById } from '../../../storage';
 import { formatPitchOutcomeDescription } from '../../pitches/utils/pitchFormatters';
 import { User, LogOut, CheckCircle2, AlertTriangle, ChevronRight, ArrowLeft, ChevronDown, Undo2 } from 'lucide-react';
 
@@ -50,7 +51,11 @@ export const LivePitchHeader: React.FC<LivePitchHeaderProps> = (props) => {
   const balls = props.balls ?? props.currentBalls ?? 0;
   const strikes = props.strikes ?? props.currentStrikes ?? 0;
   const pitchCount = props.pitchCount ?? props.currentPitchCount ?? 0;
-  const presetId = props.presetId ?? props.teamPresetId ?? 'usa_pitch_smart';
+  const presetId =
+    props.presetId ??
+    props.teamPresetId ??
+    (props.event?.teamId ? getTeamById(props.event.teamId)?.pitchRulePresetId : undefined) ??
+    'usa_pitch_smart';
 
   const {
     event,

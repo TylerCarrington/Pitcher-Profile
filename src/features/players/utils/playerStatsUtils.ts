@@ -1,5 +1,6 @@
-import { Pitch, PitchType, Coach } from '../../../types';
+import { Pitch, PitchType, Coach, CoachNotePhoto } from '../../../types';
 import { PITCH_TYPES_CONFIG } from '../../../utils/pitchSmart';
+import { parseCoachNote } from '../../events/utils/coachNotesUtils';
 
 export interface ArsenalStat {
   type: PitchType;
@@ -29,6 +30,7 @@ export interface VisibleCoachNote {
   authorName: string;
   noteText: string;
   isShared: boolean;
+  photos?: CoachNotePhoto[];
 }
 
 /**
@@ -115,20 +117,19 @@ export function filterVisibleCoachNotes(
   return Object.entries(coachNotes)
     .filter(([coachId, note]) => {
       if (typeof note !== 'string' || !note.trim()) return false;
+      const parsed = parseCoachNote(note);
       const isMyNote = currentCoachId && coachId === currentCoachId;
-      const isShared = note.startsWith('[SHARED]');
-      return isShared || isMyNote;
+      return (parsed.text.length > 0 || parsed.photos.length > 0) && (parsed.isShared || isMyNote);
     })
     .map(([coachId, noteVal]) => {
       const author = coaches.find((c) => c.id === coachId);
-      const rawNote = String(noteVal || '');
-      const isShared = rawNote.startsWith('[SHARED]');
-      const noteText = rawNote.replace(/^\[SHARED\]\s*/, '');
+      const parsed = parseCoachNote(noteVal);
       return {
         coachId,
         authorName: author?.name || 'Coach',
-        noteText,
-        isShared,
+        noteText: parsed.text,
+        isShared: parsed.isShared,
+        photos: parsed.photos,
       };
     });
 }

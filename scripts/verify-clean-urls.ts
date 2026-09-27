@@ -165,6 +165,9 @@ function runCleanUrlTests() {
 
   if (passed === total) {
     console.log('🎉 ALL CLEAN URL & DUAL RESOLUTION TESTS PASSED SUCCESSFULLY!');
+    process.exit(0);
+  } else {
+    process.exit(1);
   }
 }
 

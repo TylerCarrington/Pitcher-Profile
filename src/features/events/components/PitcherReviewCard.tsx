@@ -1,10 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { Target, ChevronDown, ChevronUp, MessageSquare, Download, FileImage } from 'lucide-react';
 import { PitcherSession, Pitch, BaseballEvent, Coach, Player, Team } from '../../../types';
-import { calculateGamePitchingMetrics, getSessionsForEvent } from '../../../storage';
+import { calculateGamePitchingMetrics, getSessionsForEvent, getTeamById } from '../../../storage';
 import { PitchSmartBadge } from '../../players/components/PitchSmartBadge';
 import { StrikeZoneHeatmap } from '../../pitches/components/StrikeZoneHeatmap';
 import { PitcherNotesEditor } from './PitcherNotesEditor';
+import { CoachNotePhotoGallery } from './CoachNotePhotoGallery';
+import { CoachNotePhoto, parseCoachNote } from '../utils/coachNotesUtils';
 import { BullpenAdjustmentPanel } from './BullpenAdjustmentPanel';
 import { SinglePlayerSessionExportModal } from './SinglePlayerSessionExportModal';
 
@@ -58,6 +60,8 @@ export const PitcherReviewCard: React.FC<PitcherReviewCardProps> = ({
   const gameMetrics = customGameMetrics ?? calculateGamePitchingMetrics(pitches);
   const isGame = event?.type === 'game';
   const isBullpen = event?.type === 'bullpen';
+  const effectiveTeam = team || (event?.teamId ? getTeamById(event.teamId) : null);
+  const teamPresetId = effectiveTeam?.pitchRulePresetId || 'usa_pitch_smart';
 
   // Gather notes for this pitcher
   const eventSessions = useMemo(() => (event ? getSessionsForEvent(event.id) : []), [event]);
@@ -71,16 +75,16 @@ export const PitcherReviewCard: React.FC<PitcherReviewCardProps> = ({
   const initialCoachNote = (targetSession && currentCoachId && targetSession.coachNotes?.[currentCoachId]) || '';
 
   const exportCoachNotes = useMemo(() => {
-    const list: { authorName: string; noteText: string }[] = [];
+    const list: { authorName: string; noteText: string; photos?: CoachNotePhoto[] }[] = [];
     pitcherSessions.forEach((s) => {
       Object.entries(s?.coachNotes || {}).forEach(([coachId, note]) => {
         if (typeof note === 'string' && note.trim().length > 0) {
+          const parsed = parseCoachNote(note);
           const author = allCoaches.find((c) => c.id === coachId);
-          const cleanText = note.replace(/^\[SHARED\]\s*/, '').trim();
-          if (cleanText) {
+          if (parsed.text || parsed.photos.length > 0) {
             const authorName = author?.name || (coachId === currentCoachId ? currentCoach?.name || 'You' : 'Coach');
-            if (!list.some((item) => item.authorName === authorName && item.noteText === cleanText)) {
-              list.push({ authorName, noteText: cleanText });
+            if (!list.some((item) => item.authorName === authorName && item.noteText === parsed.text)) {
+              list.push({ authorName, noteText: parsed.text, photos: parsed.photos });
             }
           }
         }
@@ -152,6 +156,10 @@ export const PitcherReviewCard: React.FC<PitcherReviewCardProps> = ({
           <PitchSmartBadge
             pitchCount={totalPitches}
             seasonAge={pitcher.seasonAge || 11}
+            eventDate={event?.scheduledAt}
+            playerName={pitcher.name}
+            presetId={teamPresetId}
+            isBullpen={!isGame}
           />
 
           {/* Game Line or Bullpen Counts */}
@@ -250,20 +258,20 @@ export const PitcherReviewCard: React.FC<PitcherReviewCardProps> = ({
             const eventSessions = event ? getSessionsForEvent(event.id) : [];
             const pitcherSessions = eventSessions.filter((s) => s.pitcherId === pitcher.id);
 
-            // Notes from other coaches (must be [SHARED])
+            // Notes from other coaches (must be shared)
             const coCoachNotes = pitcherSessions.flatMap((s) => {
               return Object.entries(s?.coachNotes || {}).map(([coachId, note]) => {
                 if (currentCoach && coachId === currentCoach.id) return null;
                 const author = allCoaches.find((c) => c.id === coachId);
-                const isShared = typeof note === 'string' && note.startsWith('[SHARED]');
-                const cleanText = typeof note === 'string' ? note.replace(/^\[SHARED\]\s*/, '') : '';
+                const parsed = parseCoachNote(note);
                 
                 return {
                   coachId,
                   authorName: author?.name || 'Co-Coach',
-                  noteText: cleanText,
-                  isShared,
-                  isValid: cleanText.trim().length > 0,
+                  noteText: parsed.text,
+                  photos: parsed.photos,
+                  isShared: parsed.isShared,
+                  isValid: parsed.text.trim().length > 0 || parsed.photos.length > 0,
                 };
               }).filter((n): n is NonNullable<typeof n> => n !== null && n.isValid && n.isShared);
             });
@@ -302,9 +310,18 @@ export const PitcherReviewCard: React.FC<PitcherReviewCardProps> = ({
                               Shared Comment
                             </span>
                           </div>
-                          <p className="leading-relaxed font-medium">
-                            {n.noteText}
-                          </p>
+                          {n.noteText && (
+                            <p className="leading-relaxed font-medium">
+                              {n.noteText}
+                            </p>
+                          )}
+                          {n.photos.length > 0 && (
+                            <CoachNotePhotoGallery
+                              photos={n.photos}
+                              isEditing={false}
+                              authorName={n.authorName}
+                            />
+                          )}
                         </div>
                       ))}
                     </div>
@@ -343,7 +360,7 @@ export const PitcherReviewCard: React.FC<PitcherReviewCardProps> = ({
           pitches={pitches}
           session={session}
           event={event}
-          team={team}
+          team={effectiveTeam}
           pitchesThrown={pitchesThrown}
           balls={balls}
           strikes={strikes}

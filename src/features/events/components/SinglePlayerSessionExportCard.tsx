@@ -1,7 +1,7 @@
 import React, { useMemo, useState, forwardRef } from 'react';
-import { Player, Pitch, PitcherSession, BaseballEvent, Team } from '../../../types';
+import { Player, Pitch, PitcherSession, BaseballEvent, Team, CoachNotePhoto } from '../../../types';
 import { PITCH_TYPES_CONFIG, calculatePitchSmartStatus } from '../../../utils/pitchSmart';
-import { calculateGamePitchingMetrics } from '../../../storage';
+import { calculateGamePitchingMetrics, getTeamById } from '../../../storage';
 import { Target, Activity } from 'lucide-react';
 
 export interface SinglePlayerSessionExportCardProps {
@@ -16,7 +16,7 @@ export interface SinglePlayerSessionExportCardProps {
   totalPitches?: number;
   strikePercent?: number;
   gameMetrics?: ReturnType<typeof calculateGamePitchingMetrics>;
-  coachNotes?: { authorName: string; noteText: string }[];
+  coachNotes?: { authorName: string; noteText: string; photos?: CoachNotePhoto[] }[];
   includeNotes?: boolean;
   outcomeFilter?: 'all' | 'strike' | 'ball' | 'in_play' | 'foul';
 }
@@ -178,15 +178,17 @@ export const SinglePlayerSessionExportCard = forwardRef<
     };
   }, [pitches, pitchesWithLocation.length]);
 
+  const effectiveTeam = team || (event?.teamId ? getTeamById(event.teamId) : null);
+
   // Pitch Smart Rest status
   const pitchSmartStatus = useMemo(() => {
     return calculatePitchSmartStatus(
       effectiveTotal,
       pitcher.seasonAge || 12,
       event?.scheduledAt,
-      team?.pitchRulePresetId
+      effectiveTeam?.pitchRulePresetId
     );
-  }, [effectiveTotal, pitcher.seasonAge, event?.scheduledAt, team?.pitchRulePresetId]);
+  }, [effectiveTotal, pitcher.seasonAge, event?.scheduledAt, effectiveTeam?.pitchRulePresetId]);
 
   const restDays = pitchSmartStatus.restDaysRequired;
   const maxDailyPitches = pitchSmartStatus.dailyMax;
@@ -270,7 +272,7 @@ export const SinglePlayerSessionExportCard = forwardRef<
 
         <div className="text-right shrink-0 whitespace-nowrap">
           <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 whitespace-nowrap">
-            USA Baseball Pitch Smart
+            {pitchSmartStatus.preset.name}
           </div>
           <div className="text-xs font-extrabold text-slate-700 mt-0.5 whitespace-nowrap">
             {restDays === 0 ? (
@@ -708,17 +710,33 @@ export const SinglePlayerSessionExportCard = forwardRef<
           {includeNotes && coachNotes.length > 0 && (
             <div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-200/70 space-y-2">
               <div className="flex items-center gap-1.5 text-emerald-900 font-bold text-xs">
-                <span>📋 Coach Scouting Notes</span>
+                <span>📋 Coach Scouting Notes &amp; Reference Photos</span>
               </div>
               <div className="space-y-2">
                 {coachNotes.map((n, i) => (
-                  <div key={i} className="text-xs bg-white/80 p-2.5 rounded-lg border border-emerald-100">
-                    <span className="font-black text-slate-900 block text-[11px] mb-0.5">
+                  <div key={i} className="text-xs bg-white/80 p-2.5 rounded-lg border border-emerald-100 space-y-1.5">
+                    <span className="font-black text-slate-900 block text-[11px]">
                       {n.authorName}:
                     </span>
-                    <p className="text-slate-700 leading-relaxed font-medium">
-                      {n.noteText}
-                    </p>
+                    {n.noteText && (
+                      <p className="text-slate-700 leading-relaxed font-medium">
+                        {n.noteText}
+                      </p>
+                    )}
+                    {n.photos && n.photos.length > 0 && (
+                      <div className="grid grid-cols-3 gap-1.5 pt-1">
+                        {n.photos.map((p, pIdx) => (
+                          <div key={p.id || pIdx} className="relative rounded overflow-hidden border border-slate-200 aspect-4/3 bg-slate-900">
+                            <img src={p.dataUrl} alt={p.caption || 'Reference photo'} className="w-full h-full object-cover" />
+                            {p.caption && (
+                              <div className="absolute bottom-0 inset-x-0 bg-black/70 text-white text-[9px] px-1 py-0.5 truncate">
+                                {p.caption}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -730,7 +748,7 @@ export const SinglePlayerSessionExportCard = forwardRef<
       {/* 5. Footer */}
       <div className="pt-4 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-400 font-medium">
         <span>Generated with Dugout Pitch Tracker</span>
-        <span>USA Baseball Pitch Smart Certified</span>
+        <span>{pitchSmartStatus.preset.shortName} Compliant</span>
         <span>{new Date().toLocaleDateString()} {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
       </div>
     </div>

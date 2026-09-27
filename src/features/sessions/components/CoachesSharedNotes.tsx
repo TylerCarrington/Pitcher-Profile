@@ -2,6 +2,8 @@ import React from 'react';
 import { Users } from 'lucide-react';
 import { PitcherSession, Coach } from '../../../types';
 import { getAllCoaches } from '../../../storage';
+import { parseCoachNote } from '../../events/utils/coachNotesUtils';
+import { CoachNotePhotoGallery } from '../../events/components/CoachNotePhotoGallery';
 
 export interface CoachesSharedNotesProps {
   activeSession?: PitcherSession | null;
@@ -16,15 +18,23 @@ export const CoachesSharedNotes: React.FC<CoachesSharedNotesProps> = (props) => 
   const allCoaches = getAllCoaches();
 
   const sharedNotes = Object.entries(session?.coachNotes || {})
-    .filter(([coachId, note]) => {
+    .filter(([coachId]) => {
       if (currentCoachId && coachId === currentCoachId) return false;
-      return typeof note === 'string' && note.trim().startsWith('[SHARED]');
+      return true;
     })
     .map(([coachId, note]) => {
       const author = allCoaches.find((c) => c.id === coachId);
-      const noteText = String(note || '').replace(/^\[SHARED\]\s*/, '');
-      return { coachId, authorName: author?.name || 'Co-Coach', noteText };
-    });
+      const parsed = parseCoachNote(String(note || ''));
+      return {
+        coachId,
+        authorName: author?.name || 'Co-Coach',
+        noteText: parsed.text,
+        photos: parsed.photos,
+        isShared: parsed.isShared,
+        isValid: (parsed.text.trim().length > 0 || parsed.photos.length > 0) && parsed.isShared,
+      };
+    })
+    .filter((n) => n.isValid);
 
   return (
     <div className="w-full bg-slate-50 rounded-xl border border-slate-200 p-4 space-y-3">
@@ -45,16 +55,25 @@ export const CoachesSharedNotes: React.FC<CoachesSharedNotesProps> = (props) => 
       ) : (
         <div className="grid grid-cols-1 gap-2">
           {sharedNotes.map((sn) => (
-            <div key={sn.coachId} className="bg-white p-3 rounded-lg border border-emerald-100 shadow-3xs space-y-1">
+            <div key={sn.coachId} className="bg-white p-3 rounded-lg border border-emerald-100 shadow-3xs space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-800">{sn.authorName}</span>
                 <span className="text-[9px] bg-emerald-50 text-emerald-700 font-bold px-1.5 py-0.2 rounded border border-emerald-100">
                   Shared Live
                 </span>
               </div>
-              <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                {sn.noteText}
-              </p>
+              {sn.noteText && (
+                <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                  {sn.noteText}
+                </p>
+              )}
+              {sn.photos.length > 0 && (
+                <CoachNotePhotoGallery
+                  photos={sn.photos}
+                  isEditing={false}
+                  authorName={sn.authorName}
+                />
+              )}
             </div>
           ))}
         </div>

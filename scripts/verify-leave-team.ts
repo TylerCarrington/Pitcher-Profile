@@ -123,6 +123,7 @@ console.log('====================================================');
 
 if (passed === total) {
   console.log('🎉 ALL LEAVE TEAM TESTS PASSED SUCCESSFULLY!');
+  process.exit(0);
 } else {
   process.exit(1);
 }

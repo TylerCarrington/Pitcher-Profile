@@ -3,6 +3,7 @@ import {
   BaseballEvent,
   PitcherSession,
   Player,
+  Team,
 } from '../../../types';
 import {
   ArrowLeft,
@@ -20,12 +21,16 @@ import {
 } from 'lucide-react';
 import { PitchSmartBadge } from '../../players/components/PitchSmartBadge';
 import { getPitchesForSession } from '../../pitches/pitchService';
+import { getTeamById } from '../../../storage';
 import { useTeam } from '../../teams/hooks/useTeam';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { PitcherNotesEditor } from '../../events/components/PitcherNotesEditor';
+import { CoachNotePhotoGallery } from '../../events/components/CoachNotePhotoGallery';
+import { parseCoachNote } from '../../events/utils/coachNotesUtils';
 
 export interface PitcherPickerProps {
   event?: BaseballEvent | null;
+  team?: Team | null;
   teamPlayers: Player[];
   allEventSessions?: PitcherSession[];
   activePitcher: Player | null;
@@ -42,6 +47,7 @@ export interface PitcherPickerProps {
 
 export const PitcherPicker: React.FC<PitcherPickerProps> = ({
   event,
+  team,
   teamPlayers,
   allEventSessions = [],
   activePitcher,
@@ -64,7 +70,12 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
 
   const { selectedTeam } = useTeam();
   const { currentCoach, allCoaches } = useAuth();
-  const teamPresetId = selectedTeam?.pitchRulePresetId || 'usa_pitch_smart';
+  const currentTeam =
+    team ||
+    (selectedTeam && selectedTeam.id === event?.teamId ? selectedTeam : null) ||
+    (event?.teamId ? getTeamById(event.teamId) : null) ||
+    selectedTeam;
+  const teamPresetId = currentTeam?.pitchRulePresetId || 'usa_pitch_smart';
 
   const isGame = event?.type === 'game';
 
@@ -298,9 +309,7 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
               const sessionCoachNotes = Object.entries(session.coachNotes || {})
                 .filter(([_, note]) => typeof note === 'string' && note.trim().length > 0)
                 .map(([cId, rawNote]) => {
-                  const str = String(rawNote || '');
-                  const isShared = str.startsWith('[SHARED]');
-                  const noteText = str.replace(/^\[SHARED\]\s*/, '').trim();
+                  const parsed = parseCoachNote(String(rawNote || ''));
                   const isAuthor = currentCoach?.id === cId;
                   const author = allCoaches.find((c) => c.id === cId);
                   const authorName = author?.name || (isAuthor ? (currentCoach?.name || 'You') : 'Coach');
@@ -311,12 +320,13 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
                     coachId: cId,
                     authorName,
                     isAuthor,
-                    isShared,
-                    noteText,
-                    isVisible: isShared || isAuthor || isHeadCoachOrAdmin,
+                    isShared: parsed.isShared,
+                    noteText: parsed.text,
+                    photos: parsed.photos,
+                    isVisible: parsed.isShared || isAuthor || isHeadCoachOrAdmin,
                   };
                 })
-                .filter((n) => n.isVisible);
+                .filter((n) => n.isVisible && (n.noteText.length > 0 || n.photos.length > 0));
 
               return (
                 <div
@@ -486,7 +496,7 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
                         {sessionCoachNotes.map((n, idx) => (
                           <div
                             key={`${session.id}-note-${idx}`}
-                            className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-xs space-y-1"
+                            className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-xs space-y-2"
                           >
                             <div className="flex items-center justify-between">
                               <span className="font-bold text-slate-800">{n.authorName}</span>
@@ -510,7 +520,16 @@ export const PitcherPicker: React.FC<PitcherPickerProps> = ({
                                 )}
                               </span>
                             </div>
-                            <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{n.noteText}</p>
+                            {n.noteText && (
+                              <p className="text-slate-700 whitespace-pre-wrap leading-relaxed">{n.noteText}</p>
+                            )}
+                            {n.photos && n.photos.length > 0 && (
+                              <CoachNotePhotoGallery
+                                photos={n.photos}
+                                isEditing={false}
+                                authorName={n.authorName}
+                              />
+                            )}
                           </div>
                         ))}
                       </div>

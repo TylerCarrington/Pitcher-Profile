@@ -3,7 +3,7 @@
   "appId": "1:643325237857:web:fea80e90f46470d85b6820",
   "apiKey": "AIzaSyDVJ-Vf-jWRQZX1KV-DT8fd_9u_MQEvUl8",
   "authDomain": "pitcher-profile.firebaseapp.com",
-  "firestoreDatabaseId": "",
+  "firestoreDatabaseId": "(default)",
   "storageBucket": "pitcher-profile.firebasestorage.app",
   "messagingSenderId": "643325237857",
   "measurementId": "G-TM2C0RRKHR",

@@ -1,17 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Calendar } from 'lucide-react';
+import { Users, Calendar, RefreshCw } from 'lucide-react';
 import { TeamSwitcher } from '../../features/teams/components/TeamSwitcher';
 import { TeamManagement } from '../../features/teams/components/TeamManagement';
 import { EventManagement } from '../../features/events/components/EventManagement';
 import { useTeam } from '../../features/teams/hooks/useTeam';
 import { useAuth } from '../../features/auth/hooks/useAuth';
-import { getCanonicalTeamSlugForTeam } from '../../storage';
+import { getCanonicalTeamSlugForTeam, forceResyncAndRepair } from '../../storage';
 
 export const TeamHubView: React.FC = () => {
   const { currentCoach } = useAuth();
-  const { selectedTeam, teamPlayers, teamEvents, activeTab, setActiveTab } = useTeam();
+  const { selectedTeam, teamPlayers, teamEvents, activeTab, setActiveTab, refreshTeamData } = useTeam();
   const navigate = useNavigate();
+  const [isResyncing, setIsResyncing] = useState(false);
 
   if (!selectedTeam) {
     return (
@@ -25,8 +26,29 @@ export const TeamHubView: React.FC = () => {
             Create a squad or join an existing team with an invite code from the team switcher above to manage rosters and track pitches.
           </p>
         </div>
-        <div className="pt-2 flex justify-center">
+        <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
           {currentCoach && <TeamSwitcher />}
+          {currentCoach && (
+            <button
+              type="button"
+              id="resync-cloud-teams-btn"
+              onClick={async () => {
+                setIsResyncing(true);
+                try {
+                  await forceResyncAndRepair(currentCoach.email, currentCoach.id);
+                  refreshTeamData();
+                } finally {
+                  setIsResyncing(false);
+                }
+              }}
+              disabled={isResyncing}
+              className="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Resync squads from Cloud Firestore"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isResyncing ? 'animate-spin text-emerald-600' : ''}`} />
+              <span>{isResyncing ? 'Checking Cloud...' : 'Resync Teams'}</span>
+            </button>
+          )}
         </div>
       </div>
     );

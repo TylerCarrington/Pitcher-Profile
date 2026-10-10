@@ -58,6 +58,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Firebase auth listener
   useEffect(() => {
+    // If already signed in locally, kick off cloud sync immediately rather than waiting for auth listener
+    const initialCoach = getCurrentCoach();
+    if (initialCoach && localStorage.getItem('pitch_tracker_signed_in') === 'true') {
+      initCloudSync(initialCoach.email || '', initialCoach.id);
+    }
+
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
         const coach = createCoachAccount({

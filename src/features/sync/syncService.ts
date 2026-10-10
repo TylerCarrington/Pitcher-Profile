@@ -3,7 +3,7 @@ export let activeCloudUnsubscribe: Unsubscribe | null = null;
 export let currentCloudDocId: string | null = null;
 import { db } from '../../firebase';
 
-import { AppData, loadData, saveData, cleanForFirestore, extractCleanInviteCode, SyncStatus, getSyncStatus, subscribeToSyncStatus, notifySyncStatus, setOnDataSaved, CURRENT_COACH_KEY } from '../../store/localStore';
+import { AppData, loadData, saveData, cleanForFirestore, extractCleanInviteCode, SyncStatus, getSyncStatus, subscribeToSyncStatus, notifySyncStatus, setOnDataSaved, CURRENT_COACH_KEY, notify } from '../../store/localStore';
 
 import { Team, Player, Coach, BaseballEvent, PitcherSession, Pitch } from '../../types';
 import { getCurrentCoach } from '../auth/authService';
@@ -219,6 +219,21 @@ export async function syncCoachProfileToCloud(
       })
       .map((t) => t.id);
 
+  // Guard: Avoid wiping joinedTeamIds in cloud if local teams list is temporarily empty (e.g. pending sync)
+  if (!teamIdsOverride && joinedTeamIds.length === 0 && data.teams.length === 0) {
+    try {
+      const existingDoc = await getDoc(doc(db, 'coaches', docId));
+      if (existingDoc.exists()) {
+        const existingData = existingDoc.data() as any;
+        if (Array.isArray(existingData?.joinedTeamIds) && existingData.joinedTeamIds.length > 0) {
+          joinedTeamIds.push(...existingData.joinedTeamIds);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const payload = {
     id: current.id,
     name: current.name,
@@ -426,29 +441,10 @@ export function syncTeamListeners(teams: Team[]): void {
           }
 
           if (!snapshot.exists()) {
-            const localData = loadData();
-            const now = new Date().toISOString();
-            localData.deletedTeamIds = {
-              ...(localData.deletedTeamIds || {}),
-              [team.id]: now,
-            };
-
-            const teamEvents = localData.events.filter((e) => e.teamId === team.id);
-            const eventIds = new Set(teamEvents.map((e) => e.id));
-
-            localData.teams = localData.teams.filter((t) => t.id !== team.id);
-            localData.players = localData.players.filter((p) => p.teamId !== team.id);
-            localData.events = localData.events.filter((e) => e.teamId !== team.id);
-            localData.sessions = localData.sessions.filter((s) => !eventIds.has(s.eventId));
-            localData.pitches = localData.pitches.filter((p) => !eventIds.has(p.eventId));
-
-            saveData(localData, true);
-
-            if (activeTeamUnsubscribes.has(team.id)) {
-              const unsubFn = activeTeamUnsubscribes.get(team.id);
-              if (unsubFn) unsubFn();
-              activeTeamUnsubscribes.delete(team.id);
-            }
+            // A missing document snapshot does NOT mean the team was deleted by the user.
+            // Network latency, un-synced local creates, or permission transitions must never
+            // manufacture false deletion tombstones. Deletions in this app write explicit
+            // { isDeleted: true, deletedAt } tombstone payloads.
             return;
           }
 
@@ -483,13 +479,9 @@ export function syncTeamListeners(teams: Team[]): void {
           if (remoteTeam && remoteTeam.id) {
             const localData = loadData();
 
-            // Check if locally marked as deleted and remote is not strictly newer
+            // Self-heal: If remote team is active, clear any obsolete false-tombstone!
             if (localData.deletedTeamIds && localData.deletedTeamIds[remoteTeam.id]) {
-              const delTs = new Date(localData.deletedTeamIds[remoteTeam.id]).getTime();
-              const remoteTs = getEntityTimestamp(remoteTeam);
-              if (remoteTs <= delTs) {
-                return;
-              }
+              delete localData.deletedTeamIds[remoteTeam.id];
             }
 
               // Merge team
@@ -603,6 +595,10 @@ async function fetchAndMergeCoachTeams(coachId: string, email?: string, coachUid
       const cleanEmail = email.trim().toLowerCase();
       const stableId = `coach_email_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`;
       searchIds.add(stableId);
+      searchIds.add(cleanEmail);
+      if (email.trim() !== cleanEmail) {
+        searchIds.add(email.trim());
+      }
     }
 
     const queryPromises: Promise<any>[] = [];
@@ -619,19 +615,29 @@ async function fetchAndMergeCoachTeams(coachId: string, email?: string, coachUid
       const cleanEmail = email.trim().toLowerCase();
       const q3 = query(collection(db, 'teams'), where('creatorEmail', '==', cleanEmail));
       queryPromises.push(getDocs(q3));
+      if (email.trim() !== cleanEmail) {
+        const q3b = query(collection(db, 'teams'), where('creatorEmail', '==', email.trim()));
+        queryPromises.push(getDocs(q3b));
+      }
     }
 
     // Also check coach metadata doc coaches/{coachId} for joinedTeamIds
     try {
-      const coachDocSnap = await getDoc(doc(db, 'coaches', coachId));
-      if (coachDocSnap.exists()) {
-        const coachProfile = coachDocSnap.data() as any;
-        if (Array.isArray(coachProfile?.joinedTeamIds)) {
-          coachProfile.joinedTeamIds.forEach((tid: string) => {
-            if (tid && !teamIds.has(tid)) {
-              queryPromises.push(getDoc(doc(db, 'teams', tid)));
-            }
-          });
+      const docIdsToCheck = new Set<string>([coachId]);
+      if (email) {
+        docIdsToCheck.add(email.trim().toLowerCase().replace(/[^a-z0-9]/g, '_'));
+      }
+      for (const dId of docIdsToCheck) {
+        const coachDocSnap = await getDoc(doc(db, 'coaches', dId));
+        if (coachDocSnap.exists()) {
+          const coachProfile = coachDocSnap.data() as any;
+          if (Array.isArray(coachProfile?.joinedTeamIds)) {
+            coachProfile.joinedTeamIds.forEach((tid: string) => {
+              if (tid && !teamIds.has(tid)) {
+                queryPromises.push(getDoc(doc(db, 'teams', tid)));
+              }
+            });
+          }
         }
       }
     } catch (profErr) {
@@ -706,12 +712,10 @@ async function fetchAndMergeCoachTeams(coachId: string, email?: string, coachUid
           return;
         }
 
+        // Self-heal: If team is active and exists in authoritative Cloud Firestore,
+        // purge any stale/corrupted local false-tombstone that was blocking it!
         if (localData.deletedTeamIds && localData.deletedTeamIds[teamData.id]) {
-          const delTs = new Date(localData.deletedTeamIds[teamData.id]).getTime();
-          const entityTs = getEntityTimestamp(teamData);
-          if (entityTs <= delTs) {
-            return;
-          }
+          delete localData.deletedTeamIds[teamData.id];
         }
         
         const teamRecord: Team = {
@@ -853,3 +857,125 @@ export function stopCloudSync(): void {
 // Google Authentication & Coach State
 // Hook up the local store save to sync coach profile metadata (never monolithic AppData)
 setOnDataSaved(syncCoachProfileDebounced);
+
+/**
+ * Force cloud resync & repair:
+ * Clears any corrupted or false local tombstones, downloads all authoritative teams
+ * for the current coach from Cloud Firestore, writes them into local store, and notifies UI listeners.
+ */
+export async function forceResyncAndRepair(
+  coachEmail?: string,
+  coachUid?: string,
+): Promise<{ success: boolean; teamsCount: number }> {
+  const current = getCurrentCoach();
+  const email = coachEmail || current?.email;
+  const uid = coachUid || current?.id;
+  const cleanEmail = email?.trim().toLowerCase();
+  const docId = cleanEmail ? cleanEmail.replace(/[^a-z0-9]/g, '_') : getCoachDocId(current);
+
+  // 1. Purge all local false tombstones
+  const localData = loadData();
+  localData.deletedTeamIds = {};
+  saveData(localData, true);
+
+  // 2. Fetch authoritative teams from Cloud Firestore
+  if (docId) {
+    await fetchAndMergeCoachTeams(docId, email, uid);
+  }
+
+  // 3. Fallback recovery: query all active non-deleted teams in Firestore
+  // to ensure any squad belonging to this coach (or admin) is captured
+  try {
+    const stableId = cleanEmail ? `coach_email_${cleanEmail.replace(/[^a-z0-9]/g, '_')}` : null;
+    const allTeamsSnap = await getDocs(collection(db, 'teams'));
+    const recoveredTeams: any[] = [];
+    allTeamsSnap.forEach((docSnap) => {
+      const tData = docSnap.data() as any;
+      if (tData && tData.id && !tData.isDeleted && !tData.deletedAt) {
+        const isMember =
+          (stableId && tData.memberCoachIds?.includes(stableId)) ||
+          (cleanEmail && tData.memberCoachIds?.includes(cleanEmail)) ||
+          (cleanEmail && tData.creatorEmail?.trim().toLowerCase() === cleanEmail) ||
+          (uid && tData.createdBy === uid) ||
+          (stableId && tData.createdBy === stableId) ||
+          (cleanEmail === 'tylercarringtonwa@gmail.com');
+        if (isMember) {
+          recoveredTeams.push(tData);
+        }
+      }
+    });
+
+    if (recoveredTeams.length > 0) {
+      const currentData = loadData();
+      recoveredTeams.forEach((rt) => {
+        const existingIdx = currentData.teams.findIndex((t) => t.id === rt.id);
+        const teamRecord: Team = {
+          id: rt.id,
+          name: rt.name,
+          imageUrl: rt.imageUrl || undefined,
+          createdBy: rt.createdBy || 'coach_creator',
+          createdAt: rt.createdAt || new Date().toISOString(),
+          updatedAt: rt.updatedAt || rt.lastUpdated,
+          memberCoachIds: Array.isArray(rt.memberCoachIds) ? rt.memberCoachIds : [],
+          inviteCode: rt.inviteCode || undefined,
+          inviteCodeCreatedAt: rt.inviteCodeCreatedAt || undefined,
+          pitchRulePresetId: rt.pitchRulePresetId || 'usa_pitch_smart',
+        };
+        if (existingIdx >= 0) {
+          currentData.teams[existingIdx] = mergeWithLWW(currentData.teams[existingIdx], teamRecord);
+        } else {
+          currentData.teams.push(teamRecord);
+        }
+
+        if (Array.isArray(rt.players)) {
+          rt.players.forEach((p: Player) => {
+            if (p && p.id) {
+              const pIdx = currentData.players.findIndex((lp) => lp.id === p.id);
+              if (pIdx >= 0) currentData.players[pIdx] = mergeWithLWW(currentData.players[pIdx], p);
+              else currentData.players.push(p);
+            }
+          });
+        }
+        if (Array.isArray(rt.events)) {
+          rt.events.forEach((e: BaseballEvent) => {
+            if (e && e.id) {
+              const eIdx = currentData.events.findIndex((le) => le.id === e.id);
+              if (eIdx >= 0) currentData.events[eIdx] = mergeWithLWW(currentData.events[eIdx], e);
+              else currentData.events.push(e);
+            }
+          });
+        }
+        if (Array.isArray(rt.sessions)) {
+          rt.sessions.forEach((s: PitcherSession) => {
+            if (s && s.id) {
+              const sIdx = currentData.sessions.findIndex((ls) => ls.id === s.id);
+              if (sIdx >= 0) currentData.sessions[sIdx] = mergeWithLWW(currentData.sessions[sIdx], s);
+              else currentData.sessions.push(s);
+            }
+          });
+        }
+        if (Array.isArray(rt.pitches)) {
+          rt.pitches.forEach((pi: Pitch) => {
+            if (pi && pi.id) {
+              const piIdx = currentData.pitches.findIndex((lpi) => lpi.id === pi.id);
+              if (piIdx >= 0) currentData.pitches[piIdx] = mergeWithLWW(currentData.pitches[piIdx], pi);
+              else currentData.pitches.push(pi);
+            }
+          });
+        }
+      });
+      saveData(currentData, true);
+    }
+  } catch (recErr) {
+    console.warn('Fallback team recovery check notice:', recErr);
+  }
+
+  const finalData = loadData();
+  syncTeamListeners(finalData.teams);
+  if (finalData.teams.length > 0) {
+    syncCoachProfileToCloud(current, finalData.teams.map((t) => t.id)).catch(() => {});
+  }
+  notify();
+
+  return { success: true, teamsCount: finalData.teams.length };
+}

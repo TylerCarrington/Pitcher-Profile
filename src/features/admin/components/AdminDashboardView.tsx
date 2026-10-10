@@ -30,6 +30,7 @@ import { loadData, subscribeToStore } from '../../../store/localStore';
 import { Coach, Team } from '../../../types';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { deleteTeam, addCoachToTeam, removeCoachFromTeam } from '../../teams/teamService';
+import { forceResyncAndRepair } from '../../../storage';
 
 interface AdminDashboardViewProps {
   onClose: () => void;
@@ -41,6 +42,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
   const [cloudCoaches, setCloudCoaches] = useState<Coach[]>([]);
   const [cloudTeams, setCloudTeams] = useState<Team[]>([]);
   const [isLoadingCloud, setIsLoadingCloud] = useState(false);
+  const [isResyncingCache, setIsResyncingCache] = useState(false);
   const [teamSearch, setTeamSearch] = useState('');
   const [coachSearch, setCoachSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'teams' | 'coaches' | 'system'>('teams');
@@ -82,8 +84,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
             data &&
             data.id &&
             !data.isDeleted &&
-            !data.deletedAt &&
-            (!local.deletedTeamIds || !local.deletedTeamIds[data.id])
+            !data.deletedAt
           ) {
             fetchedTeams.push({
               id: data.id,
@@ -396,14 +397,28 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onClose 
             <button
               type="button"
               id="admin-refresh-data-btn"
-              onClick={() => {
-                setStoreData(loadData());
-                fetchCloudAdminData();
+              onClick={async () => {
+                setIsResyncingCache(true);
+                try {
+                  const res = await forceResyncAndRepair(currentCoach?.email, currentCoach?.id);
+                  await fetchCloudAdminData();
+                  setStoreData(loadData());
+                  setAdminNotification(`Repaired local store & synced ${res.teamsCount} teams from Cloud Firestore.`);
+                  setTimeout(() => setAdminNotification(null), 4000);
+                } catch (err) {
+                  console.error('Error during force resync:', err);
+                  setAdminNotification('Error during cloud resync.');
+                  setTimeout(() => setAdminNotification(null), 4000);
+                } finally {
+                  setIsResyncingCache(false);
+                }
               }}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+              disabled={isResyncingCache || isLoadingCloud}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              title="Force resync all teams from Cloud Firestore and repair local cache"
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-slate-400 ${isLoadingCloud ? 'animate-spin text-emerald-400' : ''}`} />
-              <span className="hidden sm:inline">{isLoadingCloud ? 'Refreshing...' : 'Refresh Data'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 text-slate-400 ${isResyncingCache || isLoadingCloud ? 'animate-spin text-emerald-400' : ''}`} />
+              <span className="hidden sm:inline">{isResyncingCache ? 'Resyncing...' : 'Resync & Repair'}</span>
             </button>
           </div>
         </div>
